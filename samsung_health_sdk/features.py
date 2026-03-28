@@ -945,3 +945,45 @@ class HealthFeatureEngine:
             df["stress_deviation_pct"]  = np.nan
 
         return df
+
+    # ------------------------------------------------------------------
+    # 7. HTML report export
+    # ------------------------------------------------------------------
+
+    def export_report(
+        self,
+        output_path: str = "report.html",
+        start: DateLike = None,
+        end: DateLike = None,
+        title: str = "Samsung Health Dashboard",
+    ) -> "Path":
+        """
+        Generate a self-contained HTML dashboard and write it to *output_path*.
+
+        Runs all feature computations (sleep, HRV, activity, cardiac load, etc.)
+        and renders them into an interactive single-file report with ECharts charts.
+
+        Parameters
+        ----------
+        output_path:
+            Destination path for the HTML file (default: ``"report.html"``).
+        start, end:
+            Date range filter — "YYYY-MM-DD", datetime, or None for all data.
+        title:
+            Dashboard heading shown in the report.
+
+        Returns
+        -------
+        pathlib.Path pointing to the written file.
+
+        Example
+        -------
+        ::
+
+            eng = HealthFeatureEngine(parser)
+            eng.export_report("my_health_2025.html",
+                               start="2024-11-01", end="2025-06-30")
+        """
+        from samsung_health_sdk.report.builder import ReportBuilder
+        from pathlib import Path
+        return ReportBuilder(self).build(output_path, start=start, end=end, title=title)

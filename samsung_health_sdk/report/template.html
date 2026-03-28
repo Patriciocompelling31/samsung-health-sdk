@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Samsung Health Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080d18;--surf:#0f1728;--surf2:#162035;--border:#1e2d45;
+  --text:#e2e8f0;--muted:#64748b;--muted2:#475569;
+  --blue:#60a5fa;--blue-d:#3b82f6;
+  --green:#34d399;--green-d:#10b981;
+  --purple:#a78bfa;--purple-d:#7c3aed;
+  --orange:#fbbf24;--orange-d:#d97706;
+  --red:#f87171;--teal:#2dd4bf;--indigo:#818cf8;
+}
+body{background:var(--bg);color:var(--text);font-family:Inter,'Segoe UI',system-ui,sans-serif;font-size:13px;line-height:1.5;min-height:100vh}
+a{color:var(--blue);text-decoration:none}
+
+/* ── Layout ── */
+#app{max-width:1440px;margin:0 auto;padding:24px 20px 64px}
+
+.header{display:flex;justify-content:space-between;align-items:flex-end;
+  padding-bottom:20px;margin-bottom:24px;border-bottom:1px solid var(--border)}
+.header h1{font-size:20px;font-weight:700;letter-spacing:-.3px}
+.header .period{color:var(--muted);font-size:12px;margin-top:3px}
+.header .gen{color:var(--muted);font-size:11px}
+
+/* ── KPI Cards ── */
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+@media(max-width:800px){.kpi-row{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:var(--surf);border:1px solid var(--border);border-radius:12px;padding:16px 18px}
+.kpi-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px}
+.kpi-val{font-size:28px;font-weight:700;line-height:1.1}
+.kpi-sub{font-size:11px;color:var(--muted);margin-top:4px}
+.k-blue .kpi-val{color:var(--blue)}
+.k-green .kpi-val{color:var(--green)}
+.k-purple .kpi-val{color:var(--purple)}
+.k-orange .kpi-val{color:var(--orange)}
+
+/* ── Dashboard Grid ── */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.card{background:var(--surf);border:1px solid var(--border);border-radius:12px;padding:18px 16px}
+.card.full{grid-column:1/-1}
+.card-title{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.5px;margin-bottom:4px;padding-left:10px;
+  border-left:2px solid var(--blue-d)}
+.card-sub{font-size:11px;color:var(--muted2);margin-bottom:10px;padding-left:12px}
+.chart{width:100%}
+.h260{height:260px}.h280{height:280px}.h300{height:300px}
+.h320{height:320px}.h360{height:360px}.h400{height:400px}
+.empty{display:flex;align-items:center;justify-content:center;
+  height:100%;color:var(--muted);font-size:12px;font-style:italic}
+
+/* ── Footer ── */
+footer{text-align:center;color:var(--muted);font-size:11px;
+  margin-top:48px;padding-top:18px;border-top:1px solid var(--border)}
+</style>
+</head>
+<body>
+<div id="app">
+
+<header class="header">
+  <div>
+    <h1 id="p-title">Samsung Health Dashboard</h1>
+    <p class="period" id="p-period"></p>
+  </div>
+  <span class="gen" id="p-gen"></span>
+</header>
+
+<div class="kpi-row">
+  <div class="kpi k-blue">
+    <div class="kpi-label">Sleep Quality</div>
+    <div class="kpi-val" id="kv-sleep">--</div>
+    <div class="kpi-sub" id="ks-sleep">avg score / 100</div>
+  </div>
+  <div class="kpi k-green">
+    <div class="kpi-label">HRV Readiness</div>
+    <div class="kpi-val" id="kv-readiness">--</div>
+    <div class="kpi-sub" id="ks-readiness">avg score / 100</div>
+  </div>
+  <div class="kpi k-purple">
+    <div class="kpi-label">Daily Active Min</div>
+    <div class="kpi-val" id="kv-active">--</div>
+    <div class="kpi-sub">avg per day</div>
+  </div>
+  <div class="kpi k-orange">
+    <div class="kpi-label">Cardiac Fitness</div>
+    <div class="kpi-val" id="kv-cardiac">--</div>
+    <div class="kpi-sub">walking load trend</div>
+  </div>
+</div>
+
+<div class="grid">
+
+  <!-- 1. Sleep overview: stages stacked + quality line -->
+  <div class="card full">
+    <div class="card-title">Sleep</div>
+    <div class="card-sub">Stage breakdown per night · quality &amp; efficiency overlay</div>
+    <div id="c-sleep" class="chart h320"></div>
+  </div>
+
+  <!-- 2. Efficiency & Fragmentation -->
+  <div class="card">
+    <div class="card-title">Sleep Quality Detail</div>
+    <div class="card-sub">Efficiency % · fragmentation index</div>
+    <div id="c-eff" class="chart h280"></div>
+  </div>
+
+  <!-- 3. Stress → Sleep scatter -->
+  <div class="card">
+    <div class="card-title">Stress Impact on Sleep</div>
+    <div class="card-sub">Prev-day stress deviation vs that night's sleep quality</div>
+    <div id="c-stress-sleep" class="chart h280"></div>
+  </div>
+
+  <!-- 4. HRV Readiness -->
+  <div class="card full">
+    <div class="card-title">HRV Readiness</div>
+    <div class="card-sub">RMSSD vs 14-day baseline · readiness score · low-readiness nights flagged</div>
+    <div id="c-readiness" class="chart h300"></div>
+  </div>
+
+  <!-- 5. Daily Activity -->
+  <div class="card full">
+    <div class="card-title">Daily Activity Profile</div>
+    <div class="card-sub">Intensity buckets per day · HR during active minutes</div>
+    <div id="c-activity" class="chart h360"></div>
+  </div>
+
+  <!-- 6. Cardiac Load -->
+  <div class="card full">
+    <div class="card-title">Walking Cardiac Load</div>
+    <div class="card-sub">HR ÷ speed per walking bout · 4-week rolling average · lower = more aerobically efficient</div>
+    <div id="c-cardiac" class="chart h300"></div>
+  </div>
+
+  <!-- 7. Nightly Physiology: RR + Restlessness -->
+  <div class="card full">
+    <div class="card-title">Nightly Physiology</div>
+    <div class="card-sub">Respiratory rate during sleep · restless minutes · HRV suppression nights flagged</div>
+    <div id="c-physio" class="chart h260"></div>
+  </div>
+
+</div><!-- /grid -->
+
+<footer>
+  Generated by <strong>samsung-health-sdk</strong> &mdash;
+  <a href="https://github.com/Devasy/samsung-health-sdk" target="_blank">github.com/Devasy/samsung-health-sdk</a>
+</footer>
+
+</div><!-- /app -->
+
+<script>
+(function () {
+'use strict';
+
+const D = /*__HEALTH_DATA__*/null/**/;
+if (!D) {
+  document.body.innerHTML = '<p style="color:#f87171;padding:3rem;font-family:monospace">Error: no health data found in this report file.</p>';
+  return;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function avg(arr, key) {
+  const v = arr.map(r => r[key]).filter(v => v != null);
+  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+}
+function pluck(arr, yKey, xKey) {
+  return arr.filter(r => r[yKey] != null).map(r => [r[xKey || 'date'], r[yKey]]);
+}
+function fmt1(n) { return n == null ? '--' : (+n).toFixed(1); }
+function fmt0(n) { return n == null ? '--' : String(Math.round(+n)); }
+function set(id, val) { const e = document.getElementById(id); if (e) e.textContent = val; }
+
+function initChart(id, opts) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  const c = echarts.init(el, null, { renderer: 'svg' });
+  c.setOption(opts);
+  window.addEventListener('resize', () => c.resize());
+  return c;
+}
+function noData(id) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = '<div class="empty">No data available for this period</div>';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KPI Cards
+// ─────────────────────────────────────────────────────────────────────────────
+
+const m = D.meta;
+set('p-title', m.title || 'Samsung Health Dashboard');
+if (m.date_range && m.date_range.start)
+  set('p-period', m.date_range.start + '  →  ' + m.date_range.end);
+set('p-gen', 'Generated ' + (m.generated_at || '').slice(0, 10));
+
+set('kv-sleep',    fmt1(avg(D.sleep, 'quality_score')));
+set('kv-readiness', fmt1(avg(D.readiness, 'readiness_score')));
+set('kv-active',   fmt0(avg(D.activity, 'active_min')));
+const TREND_LABEL = { improving: '↓ Improving', stable: '→ Stable', declining: '↑ Declining' };
+set('kv-cardiac', TREND_LABEL[m.cardiac_trend] || '--');
+set('ks-sleep', D.sleep.length + ' nights tracked');
+if (D.readiness.length) {
+  const low = D.readiness.filter(r => r.low_readiness_flag).length;
+  set('ks-readiness', low + ' low-readiness night' + (low === 1 ? '' : 's'));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared ECharts style constants
+// ─────────────────────────────────────────────────────────────────────────────
+
+const TIP = {
+  backgroundColor: '#0b1120',
+  borderColor: '#1e2d45',
+  borderWidth: 1,
+  textStyle: { color: '#e2e8f0', fontSize: 12 },
+  axisPointer: { lineStyle: { color: '#1e2d45' } }
+};
+
+const DZ = [
+  { type: 'inside', throttle: 50 },
+  { type: 'slider', height: 18, bottom: 2,
+    borderColor: '#1e2d45', fillerColor: 'rgba(59,130,246,0.08)',
+    handleStyle: { color: '#3b82f6' }, moveHandleStyle: { color: '#3b82f6' },
+    textStyle: { color: '#64748b', fontSize: 10 } }
+];
+
+const XTIME = {
+  type: 'time',
+  axisLabel: { color: '#64748b', fontSize: 11,
+    formatter: val => { const d = new Date(val); return (d.getMonth()+1)+'/'+d.getDate(); } },
+  axisLine: { lineStyle: { color: '#1e2d45' } },
+  splitLine: { show: false }
+};
+
+function yAx(name, extra) {
+  return Object.assign({
+    name,
+    nameTextStyle: { color: '#64748b', fontSize: 10 },
+    nameGap: 6,
+    axisLabel: { color: '#64748b', fontSize: 11 },
+    axisLine: { lineStyle: { color: '#1e2d45' } },
+    splitLine: { lineStyle: { color: '#1e2d45', type: 'dashed' } }
+  }, extra || {});
+}
+
+const GRID = { left: 8, right: 8, top: 44, bottom: 50, containLabel: true };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart 1 — Sleep Overview (stages stacked + quality line)
+// ─────────────────────────────────────────────────────────────────────────────
+
+(function () {
+  if (!D.sleep.length) { noData('c-sleep'); return; }
+  initChart('c-sleep', {
+    backgroundColor: 'transparent',
+    tooltip: {
+      ...TIP, trigger: 'axis',
+      formatter: function (params) {
+        let s = '<b>' + params[0].axisValueLabel + '</b><br>';
+        params.forEach(p => {
+          if (p.value[1] != null) {
+            const unit = p.seriesName === 'Quality' ? '/100' : ' min';
+            s += p.marker + p.seriesName + ': ' + (+p.value[1]).toFixed(0) + unit + '<br>';
+          }
+        });
+        return s;
+      }
+    },
+    legend: { textStyle: { color: '#94a3b8' }, top: 6, itemWidth: 12, itemHeight: 8 },
+    grid: GRID,
+    dataZoom: DZ,
+    xAxis: XTIME,
+    yAxis: [
+      yAx('Sleep (min)', { min: 0 }),
+      yAx('Score', { min: 0, max: 100, splitLine: { show: false }, position: 'right' })
+    ],
+    series: [
+      { name: 'Deep',  type: 'bar', stack: 'sl', data: pluck(D.sleep, 'deep_min'),
+        itemStyle: { color: '#7c3aed' } },
+      { name: 'REM',   type: 'bar', stack: 'sl', data: pluck(D.sleep, 'rem_min'),
+        itemStyle: { color: '#818cf8' } },
+      { name: 'Light', type: 'bar', stack: 'sl', data: pluck(D.sleep, 'light_min'),
+        itemStyle: { color: '#334155' } },
+      { name: 'Awake', type: 'bar', stack: 'sl', data: pluck(D.sleep, 'awake_min'),
+        itemStyle: { color: '#1e293b' } },
+      { name: 'Quality', type: 'line', yAxisIndex: 1, smooth: true,
+        data: pluck(D.sleep, 'quality_score'),
+        itemStyle: { color: '#60a5fa' }, lineStyle: { width: 2.5 },
+        symbol: 'circle', symbolSize: 4 },
+      { name: 'Efficiency', type: 'line', yAxisIndex: 1, smooth: true,
+        data: pluck(D.sleep, 'efficiency_pct'),
+        itemStyle: { color: '#2dd4bf' }, lineStyle: { width: 1.5, type: 'dashed' },
+        symbol: 'none' }
+    ]
+  });
+})();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart 2 — Sleep Quality Detail (efficiency + fragmentation)
+// ─────────────────────────────────────────────────────────────────────────────
+
+(function () {
+  if (!D.sleep.length) { noData('c-eff'); return; }
+  initChart('c-eff', {
+    backgroundColor: 'transparent',
+    tooltip: { ...TIP, trigger: 'axis' },
+    legend: { textStyle: { color: '#94a3b8' }, top: 6, itemWidth: 12 },
+    grid: { left: 8, right: 8, top: 44, bottom: 50, containLabel: true },
+    dataZoom: DZ,
+    xAxis: XTIME,
+    yAxis: [
+      yAx('Efficiency %', { min: 50, max: 100 }),
+      yAx('Fragmentation', { min: 0, splitLine: { show: false }, position: 'right' })
+    ],
+    series: [
+      { name: 'Efficiency %', type: 'line', smooth: true,
+        data: pluck(D.sleep, 'efficiency_pct'),
+        itemStyle: { color: '#34d399' }, lineStyle: { width: 2 },
+        areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [{ offset: 0, color: 'rgba(52,211,153,0.2)' }, { offset: 1, color: 'rgba(52,211,153,0)' }] } },
+        symbol: 'circle', symbolSize: 3,
+        markLine: { silent: true, lineStyle: { color: '#64748b', type: 'dashed' },
+          data: [{ yAxis: 85, name: '85% target' }],
+          label: { color: '#64748b', fontSize: 10 } } },
+      { name: 'Fragmentation', type: 'bar', yAxisIndex: 1,
+        data: pluck(D.sleep, 'fragmentation_index'),
+        itemStyle: { color: 'rgba(251,191,36,0.45)', borderColor: '#fbbf24', borderWidth: 1 } }
+    ]
+  });
+})();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart 3 — Stress Impact on Sleep (scatter)
+// ─────────────────────────────────────────────────────────────────────────────
+
+(function () {
+  const ss = D.stress_sleep.filter(r => r.prev_stress_deviation != null && r.quality_score != null);
+  if (!ss.length) { noData('c-stress-sleep'); return; }
+
+  const pts = ss.map(r => ({
+    value: [r.prev_stress_deviation, r.quality_score],
+    name: r.date,
+    itemStyle: {
+      color: r.prev_stress_deviation > 10 ? '#f87171' :
+             r.prev_stress_deviation < -10 ? '#34d399' : '#60a5fa',
+      opacity: 0.75
+    }
+  }));
+
+  initChart('c-stress-sleep', {
+    backgroundColor: 'transparent',
+    tooltip: {
+      ...TIP, trigger: 'item',
+      formatter: p => '<b>' + p.name + '</b><br>' +
+        'Stress dev: ' + (+p.value[0]).toFixed(1) + '%<br>' +
+        'Sleep score: ' + (+p.value[1]).toFixed(0)
+    },
+    grid: { left: 8, right: 8, top: 20, bottom: 44, containLabel: true },
+    xAxis: {
+      name: 'Prev-Day Stress Deviation (%)',
+      nameTextStyle: { color: '#64748b', fontSize: 10 }, nameLocation: 'middle', nameGap: 28,
+      axisLabel: { color: '#64748b', fontSize: 11 },
+      axisLine: { lineStyle: { color: '#1e2d45' } },
+      splitLine: { lineStyle: { color: '#1e2d45', type: 'dashed' } },
+      type: 'value'
+    },
+    yAxis: yAx('Sleep Quality Score', { min: 0, max: 100 }),
+    series: [{
+      type: 'scatter',
+      data: pts,
+      symbolSize: 7,
+      markLine: { silent: true, lineStyle: { color: '#334155', type: 'dashed' },
+        data: [{ xAxis: 0 }], label: { show: false } }
+    }]
+  });
+})();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart 4 — HRV Readiness
+// ─────────────────────────────────────────────────────────────────────────────
+
+(function () {
+  if (!D.readiness.length) { noData('c-readiness'); return; }
+
+  const flagPts = D.readiness
+    .filter(r => r.low_readiness_flag && r.rmssd_mean != null)
+    .map(r => ({ value: [r.date, r.rmssd_mean], name: r.date }));
+
+  initChart('c-readiness', {
+    backgroundColor: 'transparent',
+    tooltip: {
+      ...TIP, trigger: 'axis',
+      formatter: function (params) {
+        let s = '<b>' + params[0].axisValueLabel + '</b><br>';
+        params.forEach(p => {
+          if (p.seriesType !== 'scatter' && p.value[1] != null)
+            s += p.marker + p.seriesName + ': ' + (+p.value[1]).toFixed(1) + '<br>';
+        });
+        return s;
+      }
+    },
+    legend: { textStyle: { color: '#94a3b8' }, top: 6, itemWidth: 12 },
+    grid: { left: 8, right: 8, top: 44, bottom: 50, containLabel: true },
+    dataZoom: DZ,
+    xAxis: XTIME,
+    yAxis: [
+      yAx('RMSSD (ms)', { min: 0 }),
+      yAx('Readiness', { min: 0, max: 100, splitLine: { show: false }, position: 'right' })
+    ],
+    series: [
+      { name: 'RMSSD', type: 'line', smooth: true,
+        data: pluck(D.readiness, 'rmssd_mean'),
+        itemStyle: { color: '#34d399' }, lineStyle: { width: 2 },
+        areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [{ offset: 0, color: 'rgba(52,211,153,0.15)' }, { offset: 1, color: 'rgba(52,211,153,0)' }] } },
+        symbol: 'circle', symbolSize: 3 },
+      { name: 'Baseline', type: 'line', smooth: true,
+        data: pluck(D.readiness, 'baseline_14d'),
+        itemStyle: { color: '#64748b' }, lineStyle: { width: 1.5, type: 'dashed' }, symbol: 'none' },
+      { name: 'Readiness', type: 'line', smooth: true, yAxisIndex: 1,
+        data: pluck(D.readiness, 'readiness_score'),
+        itemStyle: { color: '#60a5fa' }, lineStyle: { width: 1.5 }, symbol: 'none', opacity: 0.8 },
+      { name: 'Low Readiness', type: 'scatter', data: flagPts,
+        symbolSize: 9, symbol: 'triangle',
+        itemStyle: { color: '#f87171', borderColor: '#080d18', borderWidth: 1.5 },
+        tooltip: { formatter: p => '<b>' + p.name + '</b><br>⚠ Low Readiness Night' } }
+    ]
+  });
+})();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart 5 — Daily Activity Profile
+// ─────────────────────────────────────────────────────────────────────────────
+
+(function () {
+  if (!D.activity.length) { noData('c-activity'); return; }
+  initChart('c-activity', {
+    backgroundColor: 'transparent',
+    tooltip: {
+      ...TIP, trigger: 'axis',
+      formatter: function (params) {
+        let s = '<b>' + params[0].axisValueLabel + '</b><br>';
+        params.forEach(p => {
+          if (p.value[1] == null) return;
+          const unit = p.seriesName === 'Active HR' ? ' bpm' : ' min';
+          s += p.marker + p.seriesName + ': ' + (+p.value[1]).toFixed(0) + unit + '<br>';
+        });
+        return s;
+      }
+    },
+    legend: { textStyle: { color: '#94a3b8' }, top: 6, itemWidth: 12 },
+    grid: { left: 8, right: 8, top: 44, bottom: 50, containLabel: true },
+    dataZoom: DZ,
+    xAxis: XTIME,
+    yAxis: [
+      yAx('Minutes', { min: 0 }),
+      yAx('HR (bpm)', { min: 40, max: 180, splitLine: { show: false }, position: 'right' })
+    ],
+    series: [
+      { name: 'Sedentary', type: 'bar', stack: 'act', data: pluck(D.activity, 'sedentary_min'),
+        itemStyle: { color: '#1e293b' } },
+      { name: 'Light',     type: 'bar', stack: 'act', data: pluck(D.activity, 'light_min'),
+        itemStyle: { color: '#164e63' } },
+      { name: 'Low-Mod',   type: 'bar', stack: 'act', data: pluck(D.activity, 'low_mod_min'),
+        itemStyle: { color: '#065f46' } },
+      { name: 'Moderate',  type: 'bar', stack: 'act', data: pluck(D.activity, 'moderate_min'),
+        itemStyle: { color: '#15803d' } },
+      { name: 'Vigorous',  type: 'bar', stack: 'act', data: pluck(D.activity, 'vigorous_min'),
+        itemStyle: { color: '#4ade80' } },
+      { name: 'Active HR', type: 'line', yAxisIndex: 1, smooth: true,
+        data: pluck(D.activity, 'mean_hr_active'),
+        itemStyle: { color: '#f87171' }, lineStyle: { width: 1.8 }, symbol: 'none' }
+    ]
+  });
+})();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart 6 — Walking Cardiac Load
+// ─────────────────────────────────────────────────────────────────────────────
+
+(function () {
+  if (!D.cardiac_bouts.length && !D.cardiac_rolling.length) { noData('c-cardiac'); return; }
+
+  const SRC_COLOR = { pedometer: '#34d399', movement: '#60a5fa', exercise: '#fbbf24' };
+  const srcSeries = ['pedometer', 'movement', 'exercise'].map(src => ({
+    name: src.charAt(0).toUpperCase() + src.slice(1),
+    type: 'scatter',
+    data: D.cardiac_bouts.filter(r => r.source === src && r.cardiac_load != null)
+          .map(r => ({ value: [r.date, r.cardiac_load],
+                       tooltip: { formatter: () =>
+                         '<b>' + r.date + '</b><br>' +
+                         'Load: ' + r.cardiac_load.toFixed(1) + '<br>' +
+                         'HR: ' + (r.mean_hr || '--') + ' bpm<br>' +
+                         'Speed: ' + (r.speed_mps ? r.speed_mps.toFixed(2) : '--') + ' m/s<br>' +
+                         'Duration: ' + (r.duration_min || '--') + ' min<br>' +
+                         'Source: ' + src } })),
+    symbolSize: src === 'movement' ? 3 : 5,
+    itemStyle: { color: SRC_COLOR[src] || '#64748b',
+                 opacity: src === 'movement' ? 0.3 : 0.55 }
+  }));
+
+  initChart('c-cardiac', {
+    backgroundColor: 'transparent',
+    tooltip: { ...TIP, trigger: 'axis' },
+    legend: { textStyle: { color: '#94a3b8' }, top: 6, itemWidth: 12,
+      data: ['Pedometer', 'Movement', 'Exercise', '4w Rolling Avg'] },
+    grid: { left: 8, right: 8, top: 44, bottom: 50, containLabel: true },
+    dataZoom: DZ,
+    xAxis: XTIME,
+    yAxis: yAx('Cardiac Load (bpm·s/m)', { min: 20 }),
+    series: [
+      ...srcSeries,
+      { name: '4w Rolling Avg', type: 'line', smooth: true,
+        data: pluck(D.cardiac_rolling, 'rolling_cardiac_load'),
+        itemStyle: { color: '#f97316' }, lineStyle: { width: 2.5 }, symbol: 'none',
+        z: 10 }
+    ]
+  });
+})();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart 7 — Nightly Physiology (RR + Restlessness)
+// ─────────────────────────────────────────────────────────────────────────────
+
+(function () {
+  if (!D.physiology.length) { noData('c-physio'); return; }
+
+  const suppPts = D.physiology
+    .filter(r => r.hrv_suppression_flag && r.rr_mean != null)
+    .map(r => ({ value: [r.date, r.rr_mean], name: r.date }));
+
+  initChart('c-physio', {
+    backgroundColor: 'transparent',
+    tooltip: {
+      ...TIP, trigger: 'axis',
+      formatter: function (params) {
+        let s = '<b>' + params[0].axisValueLabel + '</b><br>';
+        params.forEach(p => {
+          if (p.seriesType !== 'scatter' && p.value[1] != null)
+            s += p.marker + p.seriesName + ': ' + (+p.value[1]).toFixed(1) + '<br>';
+        });
+        return s;
+      }
+    },
+    legend: { textStyle: { color: '#94a3b8' }, top: 6, itemWidth: 12 },
+    grid: { left: 8, right: 8, top: 44, bottom: 50, containLabel: true },
+    dataZoom: DZ,
+    xAxis: XTIME,
+    yAxis: [
+      yAx('Resp. Rate (br/min)', { min: 8, max: 22 }),
+      yAx('Restless min', { min: 0, splitLine: { show: false }, position: 'right' })
+    ],
+    series: [
+      { name: 'Resp. Rate', type: 'line', smooth: true,
+        data: pluck(D.physiology, 'rr_mean'),
+        itemStyle: { color: '#2dd4bf' }, lineStyle: { width: 2 },
+        areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [{ offset: 0, color: 'rgba(45,212,191,0.15)' }, { offset: 1, color: 'rgba(45,212,191,0)' }] } },
+        symbol: 'circle', symbolSize: 3 },
+      { name: 'Restless min', type: 'bar', yAxisIndex: 1,
+        data: pluck(D.physiology, 'restless_min'),
+        itemStyle: { color: 'rgba(251,191,36,0.4)', borderColor: '#fbbf24', borderWidth: 1 } },
+      { name: 'HRV Suppressed', type: 'scatter', data: suppPts,
+        symbol: 'diamond', symbolSize: 9,
+        itemStyle: { color: '#f87171', borderColor: '#080d18', borderWidth: 1.5 },
+        tooltip: { formatter: p => '<b>' + p.name + '</b><br>⚠ HRV Suppression Night' } }
+    ]
+  });
+})();
+
+})(); // end IIFE
+</script>
+</body>
+</html>
