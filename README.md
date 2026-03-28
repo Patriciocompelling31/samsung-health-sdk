@@ -1,5 +1,10 @@
 # samsung-health-sdk
 
+[![PyPI version](https://img.shields.io/pypi/v/samsung-health-sdk)](https://pypi.org/project/samsung-health-sdk/)
+[![Python](https://img.shields.io/pypi/pyversions/samsung-health-sdk)](https://pypi.org/project/samsung-health-sdk/)
+[![CI](https://github.com/Devasy/samsung-health-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/Devasy/samsung-health-sdk/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A Python SDK for parsing and analysing [Samsung Health](https://www.samsung.com/global/galaxy/apps/samsung-health/) export data.
 
 Load any health metric from a Samsung Health export directory as a **pandas DataFrame** with a single function call. Compare data across multiple people or time windows. Derive higher-level health features from the raw data.
@@ -137,3 +142,20 @@ cd samsung-health-sdk
 pip install -e ".[dev]"
 pytest
 ```
+
+### Releasing a new version
+
+Every push to `main` automatically bumps the **patch** version, builds, and publishes to PyPI via GitHub Actions.
+
+To release a **minor** or **major** bump instead, run the script locally before pushing:
+
+```bash
+python scripts/bump_version.py --minor   # 0.2.1 → 0.3.0
+python scripts/bump_version.py --major   # 0.2.1 → 1.0.0
+python scripts/bump_version.py --set 1.2.3  # explicit version
+```
+
+Then commit and push — the CI will pick up the already-bumped version and skip its own auto-bump.
+
+> **Note:** You must add a `PYPI_API_TOKEN` secret in your GitHub repository settings
+> (Settings → Secrets → Actions) for the publish step to work.
