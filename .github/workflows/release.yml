@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   release:
@@ -28,7 +29,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install build tools
-        run: pip install build twine tomli tomli-w
+        run: pip install build tomli tomli-w
 
       - name: Bump patch version
         id: bump
@@ -49,10 +50,7 @@ jobs:
           git push origin HEAD --tags
 
       - name: Publish to PyPI
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: twine upload dist/*
+        uses: pypa/gh-action-pypi-publish@release/v1
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
