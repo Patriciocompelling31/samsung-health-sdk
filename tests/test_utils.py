@@ -30,7 +30,10 @@ def test_filter_date_range_no_bounds():
 def test_filter_date_range_start_only():
     df = _make_df(["2024-01-01", "2024-06-15", "2024-12-31"])
     result = filter_date_range(df, "2024-06-01", None)
-    assert len(result) == 2
+    assert result["start_time"].dt.strftime("%Y-%m-%d").tolist() == [
+        "2024-06-15",
+        "2024-12-31",
+    ]
 
 
 def test_filter_date_range_end_only():
@@ -42,7 +45,10 @@ def test_filter_date_range_end_only():
 def test_filter_date_range_both_bounds():
     df = _make_df(["2024-01-01", "2024-06-15", "2024-12-31"])
     result = filter_date_range(df, "2024-02-01", "2024-11-30")
-    assert len(result) == 1
+    assert result["start_time"].dt.strftime("%Y-%m-%d").tolist() == ["2024-06-15"]
+    # inclusive bounds check
+    edge = filter_date_range(df, "2024-06-15", "2024-06-15")
+    assert edge["start_time"].dt.strftime("%Y-%m-%d").tolist() == ["2024-06-15"]
 
 
 def test_filter_date_range_empty_df():
