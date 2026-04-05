@@ -181,17 +181,42 @@ class RunDashboardBuilder:
         # Time series — downsample to ≤ _MAX_TS_POINTS
         ts_df = ra.run_timeseries(uuid, smooth_sec=30)
         if not ts_df.empty:
-            step = max(1, len(ts_df) // _MAX_TS_POINTS)
-            ts_down = ts_df.iloc[::step].copy()
+            ts_vis = ts_df.copy()
+
+            # Fill sparse sensor streams before downsampling so HR/speed lines
+            # stay visible even when raw samples alternate between metrics.
+            for col in [
+                "heart_rate",
+                "speed_kmh",
+                "cadence",
+                "beats_per_m_smooth",
+                "distance_cumulative_km",
+            ]:
+                if col in ts_vis.columns:
+                    s = pd.to_numeric(ts_vis[col], errors="coerce")
+                    ts_vis[col] = s.interpolate(limit_direction="both")
+
+            keep_cols = [
+                "elapsed_min",
+                "heart_rate",
+                "speed_kmh",
+                "cadence",
+                "beats_per_m_smooth",
+                "distance_cumulative_km",
+            ]
+            keep_present = [c for c in keep_cols if c in ts_vis.columns]
+
+            if len(ts_vis) > _MAX_TS_POINTS and keep_present:
+                # Bucket-average by index to reduce aliasing that can happen
+                # with naive iloc[::step] downsampling.
+                bin_ids = np.floor(np.linspace(0, _MAX_TS_POINTS - 1, len(ts_vis))).astype(int)
+                ts_down = ts_vis[keep_present].groupby(bin_ids).mean().reset_index(drop=True)
+            else:
+                ts_down = ts_vis
+
             ts_records = _to_records(
                 ts_down,
-                keep=[
-                    "elapsed_min",
-                    "heart_rate",
-                    "speed_kmh",
-                    "beats_per_m_smooth",
-                    "distance_cumulative_km",
-                ],
+                keep=keep_cols,
             )
         else:
             ts_records = []

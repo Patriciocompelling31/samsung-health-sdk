@@ -90,6 +90,7 @@ td:first-child,td:nth-child(2){text-align:left}
   <div class="tab-nav">
     <button class="tab-btn active" data-tab="overview" onclick="switchTab('overview')">All Runs</button>
     <button class="tab-btn" data-tab="detail" onclick="switchTab('detail')">Run Detail</button>
+    <button class="tab-btn" data-tab="compare" onclick="switchTab('compare')">Compare 2 Runs</button>
   </div>
 
   <!-- ALL RUNS TAB -->
@@ -133,13 +134,46 @@ td:first-child,td:nth-child(2){text-align:left}
     </div>
 
     <div class="chart-box" style="margin-bottom:16px">
-      <div class="ct">Heart Rate &amp; Speed over Time</div>
+      <div class="ct">Heart Rate, Speed &amp; Cadence over Time</div>
       <div id="chart-ts" style="height:280px"></div>
     </div>
 
     <div class="chart-box">
       <div class="ct">Beats / metre <span style="color:var(--muted);font-weight:400;text-transform:none">(30-sec rolling avg)</span></div>
       <div id="chart-bpm" style="height:220px"></div>
+    </div>
+  </div>
+
+  <!-- COMPARE TAB -->
+  <div id="tab-compare" class="tab-panel">
+    <div style="display:flex;gap:20px;align-items:flex-end;margin-bottom:20px;flex-wrap:wrap">
+      <div>
+        <div style="color:var(--muted);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Run A</div>
+        <select id="cmp-a" style="background:var(--surf2);border:1px solid var(--border);color:#f87171;padding:7px 12px;border-radius:6px;font-size:12px;cursor:pointer;outline:none;min-width:220px" onchange="renderCompare()"></select>
+      </div>
+      <div style="color:var(--muted);font-size:20px;font-weight:300;padding-bottom:4px">vs</div>
+      <div>
+        <div style="color:var(--muted);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Run B</div>
+        <select id="cmp-b" style="background:var(--surf2);border:1px solid var(--border);color:#60a5fa;padding:7px 12px;border-radius:6px;font-size:12px;cursor:pointer;outline:none;min-width:220px" onchange="renderCompare()"></select>
+      </div>
+    </div>
+
+    <div id="cmp-kpis" style="margin-bottom:20px"></div>
+
+    <div class="chart-box" style="margin-bottom:16px">
+      <div class="ct">Heart Rate Comparison</div>
+      <div id="chart-cmp-hr" style="height:260px"></div>
+    </div>
+
+    <div class="chart-row two">
+      <div class="chart-box">
+        <div class="ct">Speed (km/h)</div>
+        <div id="chart-cmp-spd" style="height:220px"></div>
+      </div>
+      <div class="chart-box">
+        <div class="ct">Cadence (spm)</div>
+        <div id="chart-cmp-cad" style="height:220px"></div>
+      </div>
     </div>
   </div>
 
@@ -166,6 +200,7 @@ document.addEventListener('DOMContentLoaded', () => {
   renderTrendChart();
   const best = (D.runs||[]).find(r=>D.live&&D.live[r.datauuid]) || (D.runs||[])[D.runs.length-1];
   if (best) populateRunSelector(best.datauuid);
+  populateCompareSelectors();
 });
 
 // ── global KPIs ──────────────────────────────────────────────────────────────
@@ -246,6 +281,170 @@ function selectRun(uuid){
   renderPace(live?live.pace_breakdown:[]);
   renderTS(live?live.timeseries:[]);
   renderBpm(live?live.timeseries:[]);
+}
+
+// ── compare runs ─────────────────────────────────────────────────────────────
+function _runsWithLiveSeries(){
+  return (D.runs||[]).filter(r=>{
+    const ts=D.live&&D.live[r.datauuid]&&D.live[r.datauuid].timeseries;
+    return Array.isArray(ts)&&ts.length>0;
+  });
+}
+
+function populateCompareSelectors(){
+  const selA=document.getElementById('cmp-a');
+  const selB=document.getElementById('cmp-b');
+  const kpiEl=document.getElementById('cmp-kpis');
+  if(!selA||!selB||!kpiEl)return;
+
+  const runs=_runsWithLiveSeries();
+  if(!runs.length){
+    selA.innerHTML='<option value="">No runs with live data</option>';
+    selB.innerHTML='<option value="">No runs with live data</option>';
+    kpiEl.innerHTML='<div class="section">No runs with live data are available for comparison.</div>';
+    renderCompare();
+    return;
+  }
+
+  const options=runs.map(r=>{
+    const dt=(r.date||'').slice(0,16);
+    const dist=r.distance_km!=null?`${r.distance_km.toFixed(2)} km`:'? km';
+    return `<option value="${r.datauuid}">${dt} — ${dist}</option>`;
+  }).join('');
+  selA.innerHTML=options;
+  selB.innerHTML=options;
+
+  const latestIndex=runs.length-1;
+  selA.value=runs[latestIndex].datauuid;
+  selB.value=runs[Math.max(0,latestIndex-1)].datauuid;
+  renderCompare();
+}
+
+function renderCompare(){
+  const selA=document.getElementById('cmp-a');
+  const selB=document.getElementById('cmp-b');
+  const kpiEl=document.getElementById('cmp-kpis');
+  if(!selA||!selB||!kpiEl)return;
+
+  let uuidA=selA.value;
+  let uuidB=selB.value;
+  const runs=_runsWithLiveSeries();
+  if(uuidA&&uuidB&&uuidA===uuidB&&runs.length>1){
+    const alt=runs.find(r=>r.datauuid!==uuidA);
+    if(alt){ uuidB=alt.datauuid; selB.value=uuidB; }
+  }
+
+  const runA=(D.runs||[]).find(r=>r.datauuid===uuidA);
+  const runB=(D.runs||[]).find(r=>r.datauuid===uuidB);
+  const liveA=D.live&&D.live[uuidA];
+  const liveB=D.live&&D.live[uuidB];
+
+  if(!runA||!runB||!liveA||!liveB){
+    kpiEl.innerHTML='<div class="section">Select two runs to compare.</div>';
+    _setEmptyCompareChart('cmpHr','chart-cmp-hr','No comparison data');
+    _setEmptyCompareChart('cmpSpd','chart-cmp-spd','No comparison data');
+    _setEmptyCompareChart('cmpCad','chart-cmp-cad','No comparison data');
+    return;
+  }
+
+  renderCompareKpis(runA,runB);
+  const labelA=`Run A (${(runA.date||'').slice(5,16)})`;
+  const labelB=`Run B (${(runB.date||'').slice(5,16)})`;
+
+  _renderCompareMetric('cmpHr','chart-cmp-hr',liveA.timeseries||[],liveB.timeseries||[],{
+    title:'Heart Rate', field:'heart_rate', unit:'bpm', minValue:1,
+    colorA:'#f87171', colorB:'#60a5fa', labelA, labelB,
+  });
+  _renderCompareMetric('cmpSpd','chart-cmp-spd',liveA.timeseries||[],liveB.timeseries||[],{
+    title:'Speed', field:'speed_kmh', unit:'km/h', minValue:0.5,
+    colorA:'#f59e0b', colorB:'#38bdf8', labelA, labelB,
+  });
+  _renderCompareMetric('cmpCad','chart-cmp-cad',liveA.timeseries||[],liveB.timeseries||[],{
+    title:'Cadence', field:'cadence', unit:'spm', minValue:1,
+    colorA:'#a78bfa', colorB:'#22d3ee', labelA, labelB,
+  });
+}
+
+function renderCompareKpis(runA,runB){
+  const rows=[
+    ['Distance',fmtKm(runA.distance_km),fmtKm(runB.distance_km)],
+    ['Duration',fmtMin(runA.duration_min),fmtMin(runB.duration_min)],
+    ['Pace',runA.pace||'–',runB.pace||'–'],
+    ['Avg Speed',runA.speed_kmh!=null?`${fmt(runA.speed_kmh,2)} km/h`:'–',runB.speed_kmh!=null?`${fmt(runB.speed_kmh,2)} km/h`:'–'],
+    ['Avg HR',fmtHR(runA.mean_hr),fmtHR(runB.mean_hr)],
+    ['Max HR',fmtHR(runA.max_hr),fmtHR(runB.max_hr)],
+    ['Cadence',runA.mean_cadence!=null?`${fmt(runA.mean_cadence,0)} spm`:'–',runB.mean_cadence!=null?`${fmt(runB.mean_cadence,0)} spm`:'–'],
+    ['Beats/km',fmt(runA.beats_per_km,0),fmt(runB.beats_per_km,0)],
+    ['Calories',runA.calories!=null?`${fmt(runA.calories,0)} kcal`:'–',runB.calories!=null?`${fmt(runB.calories,0)} kcal`:'–'],
+  ];
+  const hdrA=(runA.date||'').slice(0,16)||'Run A';
+  const hdrB=(runB.date||'').slice(0,16)||'Run B';
+  document.getElementById('cmp-kpis').innerHTML=`
+    <div class="section" style="padding:0;overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th style="text-align:left">Metric</th>
+            <th>${hdrA}</th>
+            <th>${hdrB}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(([m,a,b])=>`<tr><td style="text-align:left">${m}</td><td>${a}</td><td>${b}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function _comparePoints(ts, field, minValue){
+  return (ts||[]).map(r=>{
+    if(r.elapsed_min==null)return null;
+    const x=+(+r.elapsed_min).toFixed(2);
+    const raw=r[field];
+    const num=raw==null?null:+raw;
+    const y=(Number.isFinite(num)&&(minValue==null||num>=minValue))?num:null;
+    return [x,y];
+  }).filter(Boolean);
+}
+
+function _renderCompareMetric(chartKey, elId, tsA, tsB, cfg){
+  const el=document.getElementById(elId); if(!el)return;
+  if(_charts[chartKey])_charts[chartKey].dispose();
+  const ch=echarts.init(el,'dark',{backgroundColor:'transparent'}); _charts[chartKey]=ch;
+
+  const ptsA=_comparePoints(tsA,cfg.field,cfg.minValue);
+  const ptsB=_comparePoints(tsB,cfg.field,cfg.minValue);
+  const xs=[...ptsA.map(p=>p[0]),...ptsB.map(p=>p[0])].filter(v=>v!=null);
+  if(!xs.length){
+    ch.setOption({title:{text:'No data',textStyle:{color:'#64748b'},left:'center',top:'center'}});
+    return;
+  }
+  const maxMin=Math.ceil(Math.max(...xs));
+
+  ch.setOption({
+    tooltip:{trigger:'axis',axisPointer:{type:'cross'}},
+    grid:{left:55,right:20,top:20,bottom:45},
+    legend:{data:[cfg.labelA,cfg.labelB],textStyle:{color:'#94a3b8'},bottom:0},
+    xAxis:{type:'value',name:'min',nameTextStyle:{color:'#64748b',fontSize:10},
+           axisLabel:{color:'#64748b',fontSize:10,formatter:v=>v.toFixed(0)},min:0,max:maxMin},
+    yAxis:{type:'value',name:cfg.unit,nameTextStyle:{color:'#64748b',fontSize:10},
+           axisLabel:{color:'#94a3b8',fontSize:10},splitLine:{lineStyle:{color:'#1e2d45'}}},
+    series:[
+      {name:cfg.labelA,type:'line',data:ptsA,smooth:.25,symbol:'none',connectNulls:true,
+       lineStyle:{color:cfg.colorA,width:1.8}},
+      {name:cfg.labelB,type:'line',data:ptsB,smooth:.25,symbol:'none',connectNulls:true,
+       lineStyle:{color:cfg.colorB,width:1.8}},
+    ]
+  });
+  window.addEventListener('resize',()=>ch.resize());
+}
+
+function _setEmptyCompareChart(chartKey, elId, message){
+  const el=document.getElementById(elId); if(!el)return;
+  if(_charts[chartKey])_charts[chartKey].dispose();
+  const ch=echarts.init(el,'dark',{backgroundColor:'transparent'}); _charts[chartKey]=ch;
+  ch.setOption({title:{text:message,textStyle:{color:'#64748b'},left:'center',top:'center'}});
+  window.addEventListener('resize',()=>ch.resize());
 }
 
 // ── detail KPIs ──────────────────────────────────────────────────────────────
@@ -335,19 +534,24 @@ function renderPace(pb){
   window.addEventListener('resize',()=>ch.resize());
 }
 
-// ── chart: HR + speed timeseries ─────────────────────────────────────────────
+// ── chart: HR + speed + cadence timeseries ───────────────────────────────────
 function renderTS(ts){
   const el=document.getElementById('chart-ts'); if(!el)return;
   if(_charts.ts)_charts.ts.dispose();
   const ch=echarts.init(el,'dark',{backgroundColor:'transparent'}); _charts.ts=ch;
   if(!ts||!ts.length){ch.setOption({title:{text:'No live data',textStyle:{color:'#64748b'},left:'center',top:'center'}});return;}
   const mins=ts.map(r=>r.elapsed_min!=null?+r.elapsed_min.toFixed(2):null);
-  const hrs=ts.map(r=>r.heart_rate), spd=ts.map(r=>r.speed_kmh);
-  const maxMin=Math.ceil(Math.max(...mins.filter(Boolean)));
+  const hrs=ts.map(r=>r.heart_rate!=null&&r.heart_rate>0?r.heart_rate:null);
+  // filter out near-zero speed (GPS sampling artefacts / pauses)
+  const spd=ts.map(r=>r.speed_kmh!=null&&r.speed_kmh>0.5?r.speed_kmh:null);
+  const cad=ts.map(r=>r.cadence!=null&&r.cadence>0?r.cadence:null);
+  const hasCad=cad.some(v=>v!=null);
+  const minuteVals=mins.filter(v=>v!=null);
+  const maxMin=minuteVals.length?Math.ceil(Math.max(...minuteVals)):1;
   ch.setOption({
     tooltip:{trigger:'axis',axisPointer:{type:'cross'}},
-    grid:{left:55,right:55,top:20,bottom:45},
-    legend:{data:['Heart Rate','Speed'],textStyle:{color:'#94a3b8'},bottom:0},
+    grid:{left:55,right:hasCad?95:55,top:20,bottom:45},
+    legend:{data:['Heart Rate','Speed',...(hasCad?['Cadence']:[])],textStyle:{color:'#94a3b8'},bottom:0},
     xAxis:{type:'value',name:'min',nameTextStyle:{color:'#64748b',fontSize:10},
            axisLabel:{color:'#64748b',fontSize:10,formatter:v=>v.toFixed(0)},min:0,max:maxMin},
     yAxis:[
@@ -355,14 +559,18 @@ function renderTS(ts){
        axisLabel:{color:'#f87171',fontSize:10},splitLine:{lineStyle:{color:'#1e2d45'}}},
       {type:'value',name:'km/h',nameTextStyle:{color:'#60a5fa',fontSize:10},
        axisLabel:{color:'#60a5fa',fontSize:10},splitLine:{show:false}},
+      ...(hasCad?[{type:'value',name:'spm',nameTextStyle:{color:'#a78bfa',fontSize:10},
+       axisLabel:{color:'#a78bfa',fontSize:10},splitLine:{show:false},
+       position:'right',offset:50,axisLine:{show:true,lineStyle:{color:'#a78bfa'}}}]:[]),
     ],
     series:[
-      {name:'Heart Rate',type:'line',data:mins.map((m,i)=>[m,hrs[i]]),smooth:.2,symbol:'none',
+      {name:'Heart Rate',type:'line',data:mins.map((m,i)=>[m,hrs[i]]),smooth:.2,symbol:'none',connectNulls:true,
        lineStyle:{color:'#f87171',width:1.5},yAxisIndex:0,
        areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:'rgba(248,113,113,.25)'},{offset:1,color:'rgba(248,113,113,.01)'}]}}},
-      {name:'Speed',type:'line',data:mins.map((m,i)=>[m,spd[i]]),smooth:.2,symbol:'none',
-       lineStyle:{color:'#60a5fa',width:1.5},yAxisIndex:1,
-       areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:'rgba(96,165,250,.18)'},{offset:1,color:'rgba(96,165,250,.01)'}]}}},
+      {name:'Speed',type:'line',data:mins.map((m,i)=>[m,spd[i]]),smooth:.3,symbol:'none',connectNulls:true,
+       lineStyle:{color:'#60a5fa',width:1.5},yAxisIndex:1},
+      ...(hasCad?[{name:'Cadence',type:'line',data:mins.map((m,i)=>[m,cad[i]]),smooth:.2,symbol:'none',connectNulls:true,
+       lineStyle:{color:'#a78bfa',width:1.2,type:'solid'},yAxisIndex:2}]:[]),
     ]
   });
   window.addEventListener('resize',()=>ch.resize());
@@ -378,7 +586,8 @@ function renderBpm(ts){
   const bpm=ts.map(r=>r.beats_per_m_smooth);
   const valid=bpm.filter(v=>v!=null&&v>0&&v<5);
   const mean=valid.length?valid.reduce((a,b)=>a+b,0)/valid.length:null;
-  const maxMin=Math.ceil(Math.max(...mins.filter(Boolean)));
+  const minuteVals=mins.filter(v=>v!=null);
+  const maxMin=minuteVals.length?Math.ceil(Math.max(...minuteVals)):1;
   ch.setOption({
     tooltip:{trigger:'axis',formatter:p=>{const v=p[0]&&p[0].value?p[0].value[1]:null;return `${(p[0]&&p[0].axisValue)||''}m<br/>Beats/m: ${v!=null?v.toFixed(3):'–'}`;}},
     grid:{left:65,right:20,top:20,bottom:45},
