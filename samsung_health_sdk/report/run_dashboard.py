@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
+from samsung_health_sdk.exercise_analysis import _fmt_pace
+
 if TYPE_CHECKING:
     from samsung_health_sdk.parser import SamsungHealthParser
 
@@ -148,7 +150,9 @@ class RunDashboardBuilder:
             "total_distance_km": _val(round(all_runs["distance_km"].sum(), 1))
             if not all_runs.empty
             else None,
-            "best_pace": all_runs["pace"].min() if not all_runs.empty else "-",
+            "best_pace": _fmt_pace(all_runs["pace_min_per_km"].min())
+            if not all_runs.empty and "pace_min_per_km" in all_runs.columns
+            else "-",
             "avg_beats_per_km": _val(round(all_runs["beats_per_km"].dropna().mean(), 0))
             if not all_runs.empty
             else None,

@@ -116,6 +116,7 @@ class RunAnalysis:
         out["duration_min"] = runs["duration_min"].round(1)
         out["distance_km"] = runs["distance_km"].round(2)
         out["pace"] = runs["pace_min_per_km"].map(_fmt_pace)
+        out["pace_min_per_km"] = runs["pace_min_per_km"].round(4)
         out["speed_kmh"] = runs["speed_kmh"].round(2)
         out["mean_hr"] = runs["mean_heart_rate"].round(0)
         out["max_hr"] = runs["max_heart_rate"].round(0)
@@ -215,7 +216,9 @@ class RunAnalysis:
             Run identifier.
         max_hr : float, optional
             Override the session max HR.  If None, uses the recorded max HR
-            from the session summary (falls back to 220 - 0 if unavailable).
+            from the session summary row (``max_heart_rate`` column).  If that
+            value is missing or NaN, falls back to ``ts["heart_rate"].max()``
+            — the peak value observed in the live heart-rate timeseries.
 
         Returns
         -------

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Running Dashboard</title>
-<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -88,9 +88,9 @@ td:first-child,td:nth-child(2){text-align:left}
   <div class="kpi-row" id="global-kpis"></div>
 
   <div class="tab-nav">
-    <button class="tab-btn active" data-tab="overview" onclick="switchTab('overview')">All Runs</button>
-    <button class="tab-btn" data-tab="detail" onclick="switchTab('detail')">Run Detail</button>
-    <button class="tab-btn" data-tab="compare" onclick="switchTab('compare')">Compare 2 Runs</button>
+    <button type="button" class="tab-btn active" data-tab="overview" onclick="switchTab('overview')">All Runs</button>
+    <button type="button" class="tab-btn" data-tab="detail" onclick="switchTab('detail')">Run Detail</button>
+    <button type="button" class="tab-btn" data-tab="compare" onclick="switchTab('compare')">Compare 2 Runs</button>
   </div>
 
   <!-- ALL RUNS TAB -->
@@ -181,6 +181,11 @@ td:first-child,td:nth-child(2){text-align:left}
 <script>
 const D = /*__RUN_DATA__*/null/**/;
 let _charts = {}, _sortKey = 'date', _sortAsc = false, _selectedUuid = null;
+
+// Single debounced resize handler — registered once, covers all charts.
+(function(){
+  let _rt; window.addEventListener('resize',()=>{clearTimeout(_rt);_rt=setTimeout(()=>Object.values(_charts).forEach(c=>c&&c.resize()),120);});
+})();
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 const fmt   = (v, d=1) => v == null ? '–' : (+v).toFixed(d);
@@ -436,7 +441,7 @@ function _renderCompareMetric(chartKey, elId, tsA, tsB, cfg){
        lineStyle:{color:cfg.colorB,width:1.8}},
     ]
   });
-  window.addEventListener('resize',()=>ch.resize());
+
 }
 
 function _setEmptyCompareChart(chartKey, elId, message){
@@ -444,7 +449,7 @@ function _setEmptyCompareChart(chartKey, elId, message){
   if(_charts[chartKey])_charts[chartKey].dispose();
   const ch=echarts.init(el,'dark',{backgroundColor:'transparent'}); _charts[chartKey]=ch;
   ch.setOption({title:{text:message,textStyle:{color:'#64748b'},left:'center',top:'center'}});
-  window.addEventListener('resize',()=>ch.resize());
+
 }
 
 // ── detail KPIs ──────────────────────────────────────────────────────────────
@@ -485,7 +490,7 @@ function renderTrendChart(){
        lineStyle:{color:'#34d399',width:2},itemStyle:{color:'#34d399'},symbol:'none'},
     ]
   });
-  window.addEventListener('resize',()=>ch.resize());
+
 }
 
 // ── chart: HR zones ──────────────────────────────────────────────────────────
@@ -505,7 +510,7 @@ function renderZones(zones){
       emphasis:{label:{show:true,formatter:'{b}\n{d}%',color:'#e2e8f0',fontSize:11}}
     }]
   });
-  window.addEventListener('resize',()=>ch.resize());
+
 }
 
 // ── chart: pace breakdown ────────────────────────────────────────────────────
@@ -531,7 +536,7 @@ function renderPace(pb){
        symbolSize:7,itemStyle:{color:'#f87171'}},
     ]
   });
-  window.addEventListener('resize',()=>ch.resize());
+
 }
 
 // ── chart: HR + speed + cadence timeseries ───────────────────────────────────
@@ -573,7 +578,7 @@ function renderTS(ts){
        lineStyle:{color:'#a78bfa',width:1.2,type:'solid'},yAxisIndex:2}]:[]),
     ]
   });
-  window.addEventListener('resize',()=>ch.resize());
+
 }
 
 // ── chart: beats/metre ───────────────────────────────────────────────────────
@@ -605,7 +610,7 @@ function renderBpm(ts){
          lineStyle:{color:'#fbbf24',type:'dashed',width:1},symbol:'none',tooltip:{show:false}}]:[]),
     ]
   });
-  window.addEventListener('resize',()=>ch.resize());
+
 }
 </script>
 </body>

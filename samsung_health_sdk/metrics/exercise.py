@@ -112,6 +112,13 @@ class ExerciseMetric(BaseMetric):
         with self._csv_path.open(encoding="utf-8-sig") as fh:
             all_lines = fh.readlines()
 
+        if len(all_lines) <= skiprows:
+            raise ValueError(
+                f"Exercise CSV appears to have no header row: "
+                f"{self._csv_path} has {len(all_lines)} line(s) "
+                f"but skiprows={skiprows} was detected."
+            )
+
         header_line = all_lines[skiprows]
         col_names = [_strip_namespace(c.strip()) for c in header_line.rstrip("\n").split(",")]
 
@@ -213,7 +220,8 @@ class ExerciseMetric(BaseMetric):
 
         When the same run is recorded by both Samsung Health and a companion app
         (e.g. Google Fit), this method keeps the record with the richer data
-        (prefers non-null mean_heart_rate, then longer reported distance).
+        (prefers non-null mean_heart_rate, then higher mean_heart_rate, then
+        longer reported distance_km as the final tie-breaker).
 
         Parameters
         ----------
@@ -248,11 +256,12 @@ class ExerciseMetric(BaseMetric):
         # Within each group, prefer the record with HR data over one without.
         runs["_rounded_start"] = runs["start_time"].dt.round("5min")
         runs["_has_hr"] = runs["mean_heart_rate"].notna().astype(int)
-        runs = runs.sort_values(
-            ["_rounded_start", "_has_hr", "mean_heart_rate"],
-            ascending=[True, False, False],
-            na_position="last",
-        )
+        sort_keys = ["_rounded_start", "_has_hr", "mean_heart_rate"]
+        sort_asc = [True, False, False]
+        if "distance_km" in runs.columns:
+            sort_keys.append("distance_km")
+            sort_asc.append(False)
+        runs = runs.sort_values(sort_keys, ascending=sort_asc, na_position="last")
         runs = runs.drop_duplicates(subset=["_rounded_start"], keep="first")
         runs = runs.drop(columns=["_rounded_start", "_has_hr"])
 
