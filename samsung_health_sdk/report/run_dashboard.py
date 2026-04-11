@@ -129,19 +129,24 @@ class RunDashboardBuilder:
         runs_df = ra.compare_runs(start, end)
         trend_df = ra.beats_per_km_trend(start, end, min_distance_km=2.0)
 
-        run_records = _to_records(runs_df)
         trend_records = _to_records(trend_df)
 
-        # Build per-run live data (HR zones, pace breakdown, timeseries)
+        # Build per-run live data (HR zones, pace breakdown, timeseries, GPS)
         live: dict[str, dict] = {}
+        gap_pace_map: dict[str, str] = {}
         for _, row in runs_df.iterrows():
             uuid = row.get("datauuid")
             if not uuid:
                 continue
-            # Only runs where we have HR data are worth showing live detail
-            if pd.isna(row.get("mean_hr")):
-                continue
             live[uuid] = self._build_live(ra, uuid, row)
+            gap_pace_map[uuid] = live[uuid].get("gap_pace", "–")
+
+        # Inject gap_pace into the runs records
+        if not runs_df.empty:
+            runs_df = runs_df.copy()
+            runs_df["gap_pace"] = runs_df["datauuid"].map(gap_pace_map).fillna("–")
+
+        run_records = _to_records(runs_df)
 
         # Summary KPIs
         all_runs = runs_df
@@ -187,46 +192,112 @@ class RunDashboardBuilder:
         if not ts_df.empty:
             ts_vis = ts_df.copy()
 
-            # Fill sparse sensor streams before downsampling so HR/speed lines
-            # stay visible even when raw samples alternate between metrics.
-            for col in [
+            # Interpolate sparse sensor streams before downsampling
+            _interp_cols = [
                 "heart_rate",
                 "speed_kmh",
                 "cadence",
-                "beats_per_m_smooth",
                 "distance_cumulative_km",
-            ]:
+                "altitude_m",
+                "grade_pct",
+                "gap_speed_kmh",
+                "latitude",
+                "longitude",
+            ]
+            for col in _interp_cols:
                 if col in ts_vis.columns:
-                    s = pd.to_numeric(ts_vis[col], errors="coerce")
-                    ts_vis[col] = s.interpolate(limit_direction="both")
+                    ts_vis[col] = pd.to_numeric(ts_vis[col], errors="coerce").interpolate(
+                        limit_direction="both"
+                    )
+
+            # Recompute beats_per_m_smooth from interpolated HR and speed so
+            # NaN gaps in HR don't propagate into the chart.
+            if "heart_rate" in ts_vis.columns and "speed_kmh" in ts_vis.columns:
+                safe_speed_ms = (ts_vis["speed_kmh"] / 3.6).replace(0, float("nan"))
+                raw_bpm = ts_vis["heart_rate"] / (60.0 * safe_speed_ms)
+                ts_vis["beats_per_m_smooth"] = raw_bpm.rolling(
+                    window=30, min_periods=1, center=True
+                ).mean()
 
             keep_cols = [
-                "elapsed_min",
+                "elapsed_sec",
                 "heart_rate",
                 "speed_kmh",
                 "cadence",
                 "beats_per_m_smooth",
                 "distance_cumulative_km",
+                "altitude_m",
+                "grade_pct",
+                "gap_speed_kmh",
+                "latitude",
+                "longitude",
             ]
             keep_present = [c for c in keep_cols if c in ts_vis.columns]
 
             if len(ts_vis) > _MAX_TS_POINTS and keep_present:
-                # Bucket-average by index to reduce aliasing that can happen
-                # with naive iloc[::step] downsampling.
                 bin_ids = np.floor(np.linspace(0, _MAX_TS_POINTS - 1, len(ts_vis))).astype(int)
                 ts_down = ts_vis[keep_present].groupby(bin_ids).mean().reset_index(drop=True)
             else:
-                ts_down = ts_vis
+                ts_down = ts_vis[keep_present].copy() if keep_present else ts_vis.copy()
 
-            ts_records = _to_records(
-                ts_down,
-                keep=keep_cols,
-            )
+            # Round stored values to clean decimal noise from bucket averaging
+            _round_map = {
+                "elapsed_sec": 0,
+                "heart_rate": 1,
+                "speed_kmh": 2,
+                "cadence": 1,
+                "altitude_m": 1,
+                "grade_pct": 2,
+                "gap_speed_kmh": 2,
+                "beats_per_m_smooth": 4,
+                "distance_cumulative_km": 4,
+                "latitude": 6,
+                "longitude": 6,
+            }
+            for col, dp in _round_map.items():
+                if col in ts_down.columns:
+                    ts_down[col] = ts_down[col].round(dp)
+            if "elapsed_sec" in ts_down.columns:
+                ts_down["elapsed_sec"] = ts_down["elapsed_sec"].fillna(0).astype(int)
+
+            ts_records = _to_records(ts_down, keep=keep_cols)
+
+            # GPS track — raw 500-point downsample of location data for the map
+            gps_track: list = []
+            if "latitude" in ts_vis.columns and "longitude" in ts_vis.columns:
+                gps_df = ts_vis[["latitude", "longitude"]].dropna()
+                if not gps_df.empty:
+                    step = max(1, len(gps_df) // 500)
+                    gps_track = gps_df.iloc[::step].values.round(6).tolist()
         else:
             ts_records = []
+            gps_track = []
+
+        # Compute run-level GAP: median of gap_speed_kmh samples (excludes stops)
+        gap_pace_str = "–"
+        if ts_records:
+            gap_speeds = [
+                r["gap_speed_kmh"]
+                for r in ts_records
+                if r.get("gap_speed_kmh") is not None and r["gap_speed_kmh"] > 0.5
+            ]
+            if gap_speeds:
+                import statistics
+
+                med_gap = statistics.median(gap_speeds)
+                # Convert km/h → pace string "M:SS /km"
+                mpk = 60.0 / med_gap
+                m = int(mpk)
+                s = round((mpk - m) * 60)
+                if s == 60:
+                    m += 1
+                    s = 0
+                gap_pace_str = f"{m}:{s:02d} /km"
 
         return {
             "zones": zones,
             "pace_breakdown": pace_breakdown,
             "timeseries": ts_records,
+            "gps_track": gps_track,
+            "gap_pace": gap_pace_str,
         }

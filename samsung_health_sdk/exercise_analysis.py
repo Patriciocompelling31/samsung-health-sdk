@@ -153,6 +153,8 @@ class RunAnalysis:
             heart_rate, speed_kmh, cadence,
             beats_per_m, beats_per_m_smooth  (rolling avg),
             distance_cumulative_km            (cumulative km),
+            altitude_m, grade_pct, gap_speed_kmh  (from GPS if available),
+            latitude, longitude               (from GPS if available),
             percent_of_vo2max
         """
         df = self._metric.load_run_livedata(datauuid)
@@ -177,6 +179,58 @@ class RunAnalysis:
         elif "beats_per_m" in df.columns:
             df["beats_per_m_smooth"] = df["beats_per_m"]
 
+        # Merge GPS data: altitude, latitude, longitude → grade → Grade-Adjusted Pace
+        try:
+            loc_df = self._metric.load_run_locationdata(datauuid)
+            if not loc_df.empty and "altitude" in loc_df.columns:
+                loc_sub = (
+                    loc_df[["start_time", "latitude", "longitude", "altitude"]]
+                    .dropna(subset=["latitude", "longitude"])
+                    .copy()
+                )
+                df = pd.merge_asof(
+                    df.sort_values("start_time"),
+                    loc_sub.sort_values("start_time"),
+                    on="start_time",
+                    direction="nearest",
+                    tolerance=pd.Timedelta("5s"),
+                )
+                # Smooth raw GPS altitude (15-sample window removes spike noise)
+                df["altitude_m"] = (
+                    pd.to_numeric(df["altitude"], errors="coerce")
+                    .rolling(window=15, min_periods=1, center=True)
+                    .mean()
+                )
+                df = df.drop(columns=["altitude"], errors="ignore")
+
+                # Grade = Δaltitude / Δdistance; smooth over 30 samples
+                if "distance_cumulative_km" in df.columns:
+                    dist_m = df["distance_cumulative_km"] * 1000.0
+                    d_alt = df["altitude_m"].diff().fillna(0)
+                    d_dist = dist_m.diff().fillna(0)
+                    raw_grade = (d_alt / d_dist.replace(0, float("nan"))).clip(-0.40, 0.40)
+                    df["grade_pct"] = (
+                        raw_grade.rolling(window=30, min_periods=1, center=True).mean() * 100
+                    )
+
+                    # Grade-Adjusted Pace via Minetti et al. (2002) metabolic cost model:
+                    #   C(g) = 155.4g⁵ − 30.4g⁴ − 43.3g³ + 46.3g² + 19.5g + 3.6
+                    # GAP_speed = actual_speed × C(g) / C(0)   where C(0) = 3.6
+                    # This tells you the equivalent flat speed for the same metabolic effort.
+                    if "speed_kmh" in df.columns:
+                        g = df["grade_pct"].fillna(0) / 100.0
+                        Cr = (
+                            155.4 * g**5 - 30.4 * g**4 - 43.3 * g**3 + 46.3 * g**2 + 19.5 * g + 3.6
+                        ).clip(1.0, 15.0)
+                        df["gap_speed_kmh"] = (
+                            (df["speed_kmh"] * Cr / 3.6)
+                            .rolling(window=30, min_periods=1, center=True)
+                            .mean()
+                        )
+        except Exception:
+            # GPS data is optional — never crash the timeseries over it
+            pass
+
         keep = [
             c
             for c in [
@@ -189,6 +243,11 @@ class RunAnalysis:
                 "beats_per_m",
                 "beats_per_m_smooth",
                 "distance_cumulative_km",
+                "altitude_m",
+                "grade_pct",
+                "gap_speed_kmh",
+                "latitude",
+                "longitude",
                 "percent_of_vo2max",
             ]
             if c in df.columns

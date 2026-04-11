@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Running Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -16,7 +18,7 @@
 body{background:var(--bg);color:var(--text);font-family:Inter,'Segoe UI',system-ui,sans-serif;font-size:13px;line-height:1.5;min-height:100vh}
 #app{max-width:1440px;margin:0 auto;padding:24px 20px 64px}
 
-.header{display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:16px;margin-bottom:24px;border-bottom:1px solid var(--border)}
+.header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:8px;padding-bottom:16px;margin-bottom:24px;border-bottom:1px solid var(--border)}
 .header h1{font-size:22px;font-weight:700;letter-spacing:-.4px}
 .header .sub{color:var(--muted);font-size:11px;margin-top:4px}
 .header .gen{color:var(--muted);font-size:11px}
@@ -57,11 +59,12 @@ tbody tr.selected{background:#1a2744;border-left:3px solid var(--blue)}
 td{padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 td:first-child,td:nth-child(2){text-align:left}
 
-.detail-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
-.detail-header .run-title{font-size:15px;font-weight:700}
-.detail-header .run-sub{color:var(--muted);font-size:12px;margin-top:2px}
+.detail-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.detail-header .run-title{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.detail-header .run-sub{color:var(--muted);font-size:12px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #run-select{background:var(--surf2);border:1px solid var(--border);color:var(--text);
-  padding:6px 10px;border-radius:6px;font-size:12px;cursor:pointer;outline:none}
+  padding:6px 10px;border-radius:6px;font-size:12px;cursor:pointer;outline:none;
+  max-width:260px;min-width:160px;flex-shrink:0}
 
 .detail-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:20px}
 .dkpi{background:var(--surf2);border-radius:8px;padding:12px 14px}
@@ -72,6 +75,15 @@ td:first-child,td:nth-child(2){text-align:left}
 .c-blue{color:var(--blue)}.c-green{color:var(--green)}.c-orange{color:var(--orange)}
 .c-purple{color:var(--purple)}.c-teal{color:var(--teal)}.c-red{color:var(--red)}
 .c-indigo{color:var(--indigo)}.c-yellow{color:#facc15}.c-muted{color:#94a3b8}
+#run-map{height:380px;border-radius:6px;overflow:hidden}
+.leaflet-container{background:#0f1728 !important}
+.km-toggle{background:transparent;border:1px solid var(--border);color:var(--muted);
+  font-size:10px;font-weight:600;padding:4px 10px;border-radius:5px;cursor:pointer;
+  text-transform:uppercase;letter-spacing:.05em;transition:color .15s,border-color .15s,background .15s}
+.km-toggle:hover{color:var(--text)}
+.km-toggle.active{background:rgba(96,165,250,.12);border-color:var(--blue);color:var(--blue)}
+.chart-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.chart-header .ct{margin-bottom:0}
 </style>
 </head>
 <body>
@@ -134,13 +146,26 @@ td:first-child,td:nth-child(2){text-align:left}
     </div>
 
     <div class="chart-box" style="margin-bottom:16px">
-      <div class="ct">Heart Rate, Speed &amp; Cadence over Time</div>
+      <div class="ct">Elevation Profile &amp; Grade-Adjusted Pace <span style="color:var(--muted);font-weight:400;text-transform:none">(Minetti model)</span></div>
+      <div id="chart-elev" style="height:220px"></div>
+    </div>
+
+    <div class="chart-box" style="margin-bottom:16px">
+      <div class="chart-header">
+        <div class="ct">Heart Rate, Speed &amp; Cadence</div>
+        <button type="button" id="km-toggle" class="km-toggle" onclick="toggleKmMarkers()">⊞ km marks</button>
+      </div>
       <div id="chart-ts" style="height:280px"></div>
     </div>
 
-    <div class="chart-box">
+    <div class="chart-box" style="margin-bottom:16px">
       <div class="ct">Beats / metre <span style="color:var(--muted);font-weight:400;text-transform:none">(30-sec rolling avg)</span></div>
       <div id="chart-bpm" style="height:220px"></div>
+    </div>
+
+    <div class="chart-box">
+      <div class="ct">GPS Route</div>
+      <div id="run-map"></div>
     </div>
   </div>
 
@@ -181,17 +206,55 @@ td:first-child,td:nth-child(2){text-align:left}
 <script>
 const D = /*__RUN_DATA__*/null/**/;
 let _charts = {}, _sortKey = 'date', _sortAsc = false, _selectedUuid = null;
+let _showKmMarkers = false, _leafletMap = null;
 
 // Single debounced resize handler — registered once, covers all charts.
 (function(){
-  let _rt; window.addEventListener('resize',()=>{clearTimeout(_rt);_rt=setTimeout(()=>Object.values(_charts).forEach(c=>c&&c.resize()),120);});
+  let _rt; window.addEventListener('resize',()=>{clearTimeout(_rt);_rt=setTimeout(()=>{
+    Object.values(_charts).forEach(c=>c&&c.resize());
+    if(_leafletMap)_leafletMap.invalidateSize();
+  },120);});
 })();
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 const fmt   = (v, d=1) => v == null ? '–' : (+v).toFixed(d);
 const fmtHR = v => v == null ? '–' : Math.round(+v) + ' bpm';
 const fmtKm = v => v == null ? '–' : fmt(v,2) + ' km';
-const fmtMin= v => v == null ? '–' : fmt(v,0) + ' min';
+
+// Format elapsed seconds as mm:ss or h:mm:ss (skip hours for runs < 1 h)
+function fmtElapsed(sec){
+  if(sec==null||!Number.isFinite(+sec))return'0:00';
+  const s=Math.round(+sec);
+  const hh=Math.floor(s/3600), mm=Math.floor((s%3600)/60), ss=s%60;
+  if(hh>0)return`${hh}:${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+  return`${mm}:${String(ss).padStart(2,'0')}`;
+}
+// Format duration_min (float) as h:mm:ss / mm:ss
+const fmtDur = v => v==null?'–':fmtElapsed(Math.round(+v*60));
+// Convert speed km/h → pace string "M:SS /km"
+function speedToPace(kmh){
+  if(!kmh||+kmh<0.5)return'–';
+  const mpk=60/+kmh, m=Math.floor(mpk), s=Math.round((mpk-m)*60);
+  return s===60?`${m+1}:00 /km`:`${m}:${String(s).padStart(2,'0')} /km`;
+}
+// Km-marker helpers
+function _computeKmMarks(ts){
+  const marks=[]; if(!ts||!ts.length)return marks;
+  let next=1;
+  for(const r of ts){
+    if(r.distance_cumulative_km==null||r.elapsed_sec==null)continue;
+    if(r.distance_cumulative_km>=next){marks.push({km:next,sec:r.elapsed_sec});next++;}
+  }
+  return marks;
+}
+function toggleKmMarkers(){
+  _showKmMarkers=!_showKmMarkers;
+  const btn=document.getElementById('km-toggle');
+  if(btn)btn.classList.toggle('active',_showKmMarkers);
+  const live=D.live&&D.live[_selectedUuid];
+  renderTS(live?live.timeseries:[]);
+  if(_leafletMap){const live2=D.live&&D.live[_selectedUuid];renderMap(live2?live2.gps_track:[],live2?live2.timeseries:[]);}
+}
 
 // ── boot ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -226,7 +289,7 @@ function renderGlobalKpis(){
 const COLS=[
   {k:'date',        l:'Date',     f:v=>v?v.slice(0,16):'–',           r:false},
   {k:'distance_km', l:'Distance', f:v=>fmtKm(v),                       r:true},
-  {k:'duration_min',l:'Duration', f:v=>fmtMin(v),                      r:true},
+  {k:'duration_min',l:'Duration', f:v=>fmtDur(v),                      r:true},
   {k:'pace',        l:'Pace',     f:v=>v||'–',                         r:true},
   {k:'speed_kmh',   l:'Speed',    f:v=>v==null?'–':fmt(v,1)+' km/h',   r:true},
   {k:'mean_hr',     l:'Avg HR',   f:v=>fmtHR(v),                       r:true},
@@ -261,7 +324,7 @@ function switchTab(name){
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
   document.querySelector(`[data-tab="${name}"]`).classList.add('active');
-  setTimeout(()=>Object.values(_charts).forEach(c=>c&&c.resize()),60);
+  setTimeout(()=>{Object.values(_charts).forEach(c=>c&&c.resize());if(_leafletMap)_leafletMap.invalidateSize();},60);
 }
 
 // ── run selector ─────────────────────────────────────────────────────────────
@@ -279,13 +342,16 @@ function selectRun(uuid){
   const row=document.getElementById('row-'+uuid); if(row)row.classList.add('selected');
   document.getElementById('run-select').value=uuid;
   document.getElementById('detail-run-title').textContent=((run.date||'').slice(0,16)||'Run');
-  document.getElementById('detail-run-sub').textContent=[fmtKm(run.distance_km),fmtMin(run.duration_min),run.pace||''].filter(Boolean).join(' · ');
+  document.getElementById('detail-run-sub').textContent=[fmtKm(run.distance_km),fmtDur(run.duration_min),run.pace||''].filter(Boolean).join(' · ');
   renderDetailKpis(run);
   const live=D.live&&D.live[uuid];
   renderZones(live?live.zones:[]);
   renderPace(live?live.pace_breakdown:[]);
-  renderTS(live?live.timeseries:[]);
-  renderBpm(live?live.timeseries:[]);
+  const _ts=live?live.timeseries:[];
+  renderAltGAP(_ts);
+  renderTS(_ts);
+  renderBpm(_ts);
+  renderMap(live?live.gps_track:[], _ts);
 }
 
 // ── compare runs ─────────────────────────────────────────────────────────────
@@ -373,8 +439,9 @@ function renderCompare(){
 function renderCompareKpis(runA,runB){
   const rows=[
     ['Distance',fmtKm(runA.distance_km),fmtKm(runB.distance_km)],
-    ['Duration',fmtMin(runA.duration_min),fmtMin(runB.duration_min)],
-    ['Pace',runA.pace||'–',runB.pace||'–'],
+    ['Duration',fmtDur(runA.duration_min),fmtDur(runB.duration_min)],
+    ['Avg Pace',runA.pace||'–',runB.pace||'–'],
+    ['GAP',runA.gap_pace||'–',runB.gap_pace||'–'],
     ['Avg Speed',runA.speed_kmh!=null?`${fmt(runA.speed_kmh,2)} km/h`:'–',runB.speed_kmh!=null?`${fmt(runB.speed_kmh,2)} km/h`:'–'],
     ['Avg HR',fmtHR(runA.mean_hr),fmtHR(runB.mean_hr)],
     ['Max HR',fmtHR(runA.max_hr),fmtHR(runB.max_hr)],
@@ -403,8 +470,8 @@ function renderCompareKpis(runA,runB){
 
 function _comparePoints(ts, field, minValue){
   return (ts||[]).map(r=>{
-    if(r.elapsed_min==null)return null;
-    const x=+(+r.elapsed_min).toFixed(2);
+    if(r.elapsed_sec==null)return null;
+    const x=Math.round(+r.elapsed_sec);
     const raw=r[field];
     const num=raw==null?null:+raw;
     const y=(Number.isFinite(num)&&(minValue==null||num>=minValue))?num:null;
@@ -430,8 +497,8 @@ function _renderCompareMetric(chartKey, elId, tsA, tsB, cfg){
     tooltip:{trigger:'axis',axisPointer:{type:'cross'}},
     grid:{left:55,right:20,top:20,bottom:45},
     legend:{data:[cfg.labelA,cfg.labelB],textStyle:{color:'#94a3b8'},bottom:0},
-    xAxis:{type:'value',name:'min',nameTextStyle:{color:'#64748b',fontSize:10},
-           axisLabel:{color:'#64748b',fontSize:10,formatter:v=>v.toFixed(0)},min:0,max:maxMin},
+    xAxis:{type:'value',nameTextStyle:{color:'#64748b',fontSize:10},
+           axisLabel:{color:'#64748b',fontSize:10,formatter:v=>fmtElapsed(v)},min:0,max:maxMin,minInterval:300},
     yAxis:{type:'value',name:cfg.unit,nameTextStyle:{color:'#64748b',fontSize:10},
            axisLabel:{color:'#94a3b8',fontSize:10},splitLine:{lineStyle:{color:'#1e2d45'}}},
     series:[
@@ -456,15 +523,16 @@ function _setEmptyCompareChart(chartKey, elId, message){
 function renderDetailKpis(run){
   const items=[
     {l:'Distance',   v:fmtKm(run.distance_km),                                  c:'c-blue'},
-    {l:'Duration',   v:fmtMin(run.duration_min),                                 c:'c-green'},
+    {l:'Duration',   v:fmtDur(run.duration_min),                                 c:'c-green'},
     {l:'Avg Pace',   v:run.pace||'–',                                            c:'c-teal'},
+    {l:'GAP',        v:run.gap_pace||'–',                      u:'grade-adj',    c:'c-green'},
     {l:'Avg HR',     v:fmtHR(run.mean_hr),                                       c:'c-orange'},
     {l:'Max HR',     v:fmtHR(run.max_hr),                                        c:'c-red'},
     {l:'Cadence',    v:run.mean_cadence!=null?fmt(run.mean_cadence,0)+' spm':'–',c:'c-purple'},
     {l:'VO2 Max',    v:run.vo2_max!=null?fmt(run.vo2_max,1):'–', u:'ml/kg/min',  c:'c-indigo'},
-    {l:'Beats/km',   v:fmt(run.beats_per_km,0),                  u:'index',      c:'c-yellow'},
+    {l:'Beats/km',   v:fmt(run.beats_per_km,0),                  u:'HR efficiency',c:'c-yellow'},
     {l:'Calories',   v:run.calories!=null?fmt(run.calories,0):'–',u:'kcal',      c:'c-muted'},
-    {l:'Elevation',  v:run.altitude_gain_m!=null?'+'+fmt(run.altitude_gain_m,0):'–',u:'m',c:'c-muted'},
+    {l:'Elevation',  v:run.altitude_gain_m!=null?'+'+fmt(run.altitude_gain_m,0):'–',u:'m gain',c:'c-muted'},
   ];
   document.getElementById('detail-kpis').innerHTML=items.map(i=>
     `<div class="dkpi"><div class="dl">${i.l}</div><div class="dv ${i.c}">${i.v}</div>${i.u?`<div class="du">${i.u}</div>`:''}</div>`
@@ -523,7 +591,14 @@ function renderPace(pb){
   const maxS=Math.max(...spds.filter(Boolean));
   const CLR=spds.map(s=>!s?'#334155':s/maxS>.85?'#34d399':s/maxS>.65?'#60a5fa':'#a78bfa');
   ch.setOption({
-    tooltip:{trigger:'axis'},
+    tooltip:{trigger:'axis',formatter:params=>{
+      let s=`<b>${params[0]?.name||''}</b>`;
+      params.forEach(p=>{
+        const v=p.value;if(v==null)return;
+        if(p.seriesName==='Speed')s+=`<br/>${p.marker}Speed: <b>${(+v).toFixed(1)} km/h</b> — ${speedToPace(+v)}`;
+        else if(p.seriesName==='Avg HR')s+=`<br/>${p.marker}Avg HR: <b>${Math.round(+v)} bpm</b>`;
+      });return s;
+    }},
     grid:{left:85,right:60,top:10,bottom:40},
     xAxis:{type:'value',name:'km/h',nameTextStyle:{color:'#64748b',fontSize:10},axisLabel:{color:'#64748b',fontSize:10},
            min:v=>Math.floor(v.min*.9),max:v=>Math.ceil(v.max*1.05)},
@@ -531,7 +606,7 @@ function renderPace(pb){
     legend:{data:['Speed','Avg HR'],textStyle:{color:'#94a3b8',fontSize:10},bottom:0},
     series:[
       {name:'Speed',type:'bar',data:spds.map((v,i)=>({value:v,itemStyle:{color:CLR[i]}})),barMaxWidth:20,
-       label:{show:true,position:'right',formatter:p=>p.value?p.value.toFixed(1):'',color:'#94a3b8',fontSize:10}},
+       label:{show:true,position:'right',formatter:p=>p.value?speedToPace(+p.value):'',color:'#94a3b8',fontSize:10}},
       {name:'Avg HR',type:'scatter',yAxisIndex:0,data:hrs.map((v,i)=>v!=null?{value:[v,segs[i]]}:null).filter(Boolean),
        symbolSize:7,itemStyle:{color:'#f87171'}},
     ]
@@ -545,40 +620,52 @@ function renderTS(ts){
   if(_charts.ts)_charts.ts.dispose();
   const ch=echarts.init(el,'dark',{backgroundColor:'transparent'}); _charts.ts=ch;
   if(!ts||!ts.length){ch.setOption({title:{text:'No live data',textStyle:{color:'#64748b'},left:'center',top:'center'}});return;}
-  const mins=ts.map(r=>r.elapsed_min!=null?+r.elapsed_min.toFixed(2):null);
-  const hrs=ts.map(r=>r.heart_rate!=null&&r.heart_rate>0?r.heart_rate:null);
-  // filter out near-zero speed (GPS sampling artefacts / pauses)
-  const spd=ts.map(r=>r.speed_kmh!=null&&r.speed_kmh>0.5?r.speed_kmh:null);
-  const cad=ts.map(r=>r.cadence!=null&&r.cadence>0?r.cadence:null);
+  const secs=ts.map(r=>r.elapsed_sec!=null?Math.round(+r.elapsed_sec):null);
+  const maxSec=Math.max(...secs.filter(v=>v!=null),1);
+  const hrs=ts.map(r=>r.heart_rate!=null&&r.heart_rate>0?+r.heart_rate.toFixed(1):null);
+  const spd=ts.map(r=>r.speed_kmh!=null&&r.speed_kmh>0.5?+r.speed_kmh.toFixed(2):null);
+  const cad=ts.map(r=>r.cadence!=null&&r.cadence>0?Math.round(+r.cadence):null);
   const hasCad=cad.some(v=>v!=null);
-  const minuteVals=mins.filter(v=>v!=null);
-  const maxMin=minuteVals.length?Math.ceil(Math.max(...minuteVals)):1;
+  const kmMarks=_showKmMarkers?_computeKmMarks(ts):[];
   ch.setOption({
-    tooltip:{trigger:'axis',axisPointer:{type:'cross'}},
-    grid:{left:55,right:hasCad?95:55,top:20,bottom:45},
+    tooltip:{trigger:'axis',axisPointer:{type:'line'},
+      formatter:params=>{
+        const t=fmtElapsed(params[0]&&params[0].axisValue);
+        let s=`<b>${t}</b>`;
+        params.forEach(p=>{
+          const v=p.value&&p.value[1]!=null?p.value[1]:null; if(v==null)return;
+          const vStr=p.seriesName==='Heart Rate'?`${Math.round(v)} bpm`:
+                     p.seriesName==='Speed'?`${v.toFixed(1)} km/h \u2014 ${speedToPace(v)}`:
+                     p.seriesName==='Cadence'?`${Math.round(v)} spm`:v;
+          s+=`<br/>${p.marker}${p.seriesName}: <b>${vStr}</b>`;
+        });
+        return s;
+      }
+    },
+    grid:{left:55,right:55,top:20,bottom:45},
     legend:{data:['Heart Rate','Speed',...(hasCad?['Cadence']:[])],textStyle:{color:'#94a3b8'},bottom:0},
-    xAxis:{type:'value',name:'min',nameTextStyle:{color:'#64748b',fontSize:10},
-           axisLabel:{color:'#64748b',fontSize:10,formatter:v=>v.toFixed(0)},min:0,max:maxMin},
+    xAxis:{type:'value',min:0,max:maxSec,minInterval:300,
+      axisLabel:{color:'#64748b',fontSize:10,formatter:v=>fmtElapsed(v)},splitLine:{show:false}},
     yAxis:[
       {type:'value',name:'bpm',nameTextStyle:{color:'#f87171',fontSize:10},
        axisLabel:{color:'#f87171',fontSize:10},splitLine:{lineStyle:{color:'#1e2d45'}}},
       {type:'value',name:'km/h',nameTextStyle:{color:'#60a5fa',fontSize:10},
        axisLabel:{color:'#60a5fa',fontSize:10},splitLine:{show:false}},
-      ...(hasCad?[{type:'value',name:'spm',nameTextStyle:{color:'#a78bfa',fontSize:10},
-       axisLabel:{color:'#a78bfa',fontSize:10},splitLine:{show:false},
-       position:'right',offset:50,axisLine:{show:true,lineStyle:{color:'#a78bfa'}}}]:[]),
     ],
     series:[
-      {name:'Heart Rate',type:'line',data:mins.map((m,i)=>[m,hrs[i]]),smooth:.2,symbol:'none',connectNulls:true,
+      {name:'Heart Rate',type:'line',data:secs.map((s,i)=>[s,hrs[i]]),smooth:.2,symbol:'none',connectNulls:true,
        lineStyle:{color:'#f87171',width:1.5},yAxisIndex:0,
-       areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:'rgba(248,113,113,.25)'},{offset:1,color:'rgba(248,113,113,.01)'}]}}},
-      {name:'Speed',type:'line',data:mins.map((m,i)=>[m,spd[i]]),smooth:.3,symbol:'none',connectNulls:true,
+       areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:'rgba(248,113,113,.2)'},{offset:1,color:'rgba(248,113,113,.01)'}]}},
+       markLine:kmMarks.length?{silent:true,symbol:'none',
+         data:kmMarks.map(m=>({xAxis:m.sec,lineStyle:{color:'#334155',type:'dashed',width:1},
+           label:{show:true,formatter:`${m.km}k`,color:'#64748b',fontSize:9,position:'insideStartTop'}}))
+       }:undefined},
+      {name:'Speed',type:'line',data:secs.map((s,i)=>[s,spd[i]]),smooth:.3,symbol:'none',connectNulls:true,
        lineStyle:{color:'#60a5fa',width:1.5},yAxisIndex:1},
-      ...(hasCad?[{name:'Cadence',type:'line',data:mins.map((m,i)=>[m,cad[i]]),smooth:.2,symbol:'none',connectNulls:true,
-       lineStyle:{color:'#a78bfa',width:1.2,type:'solid'},yAxisIndex:2}]:[]),
+      ...(hasCad?[{name:'Cadence',type:'line',data:secs.map((s,i)=>[s,cad[i]]),smooth:.2,symbol:'none',connectNulls:true,
+       lineStyle:{color:'#a78bfa',width:1.2},yAxisIndex:0}]:[]),
     ]
   });
-
 }
 
 // ── chart: beats/metre ───────────────────────────────────────────────────────
@@ -587,30 +674,124 @@ function renderBpm(ts){
   if(_charts.bpm)_charts.bpm.dispose();
   const ch=echarts.init(el,'dark',{backgroundColor:'transparent'}); _charts.bpm=ch;
   if(!ts||!ts.length){ch.setOption({title:{text:'No live data',textStyle:{color:'#64748b'},left:'center',top:'center'}});return;}
-  const mins=ts.map(r=>r.elapsed_min!=null?+r.elapsed_min.toFixed(2):null);
-  const bpm=ts.map(r=>r.beats_per_m_smooth);
+  const secs=ts.map(r=>r.elapsed_sec!=null?Math.round(+r.elapsed_sec):null);
+  const maxSec=Math.max(...secs.filter(v=>v!=null),1);
+  const bpm=ts.map(r=>r.beats_per_m_smooth!=null?+r.beats_per_m_smooth:null);
   const valid=bpm.filter(v=>v!=null&&v>0&&v<5);
   const mean=valid.length?valid.reduce((a,b)=>a+b,0)/valid.length:null;
-  const minuteVals=mins.filter(v=>v!=null);
-  const maxMin=minuteVals.length?Math.ceil(Math.max(...minuteVals)):1;
   ch.setOption({
-    tooltip:{trigger:'axis',formatter:p=>{const v=p[0]&&p[0].value?p[0].value[1]:null;return `${(p[0]&&p[0].axisValue)||''}m<br/>Beats/m: ${v!=null?v.toFixed(3):'–'}`;}},
+    tooltip:{trigger:'axis',formatter:p=>{
+      const v=p[0]&&p[0].value?p[0].value[1]:null;
+      return`${fmtElapsed(p[0]&&p[0].axisValue)}<br/>Beats/m: <b>${v!=null?v.toFixed(3):'–'}</b>`;
+    }},
     grid:{left:65,right:20,top:20,bottom:45},
-    xAxis:{type:'value',name:'min',nameTextStyle:{color:'#64748b',fontSize:10},
-           axisLabel:{color:'#64748b',fontSize:10,formatter:v=>v.toFixed(0)},min:0,max:maxMin},
+    xAxis:{type:'value',min:0,max:maxSec,minInterval:300,
+      axisLabel:{color:'#64748b',fontSize:10,formatter:v=>fmtElapsed(v)}},
     yAxis:{type:'value',name:'beats/m',nameTextStyle:{color:'#2dd4bf',fontSize:10},
-           axisLabel:{color:'#64748b',fontSize:10},splitLine:{lineStyle:{color:'#1e2d45'}},
-           min:v=>+Math.max(0,v.min*.9).toFixed(3),max:v=>+Math.min(5,v.max*1.1).toFixed(3)},
-    legend:{data:['Beats/m','Avg'],textStyle:{color:'#94a3b8'},bottom:0},
+      axisLabel:{color:'#64748b',fontSize:10},splitLine:{lineStyle:{color:'#1e2d45'}},
+      min:v=>+Math.max(0,v.min*.9).toFixed(3),max:v=>+Math.min(5,v.max*1.1).toFixed(3)},
+    legend:{data:['Beats/m',...(mean!=null?['Avg']:[])],textStyle:{color:'#94a3b8'},bottom:0},
     series:[
-      {name:'Beats/m',type:'line',data:mins.map((m,i)=>[m,bpm[i]]),smooth:.3,symbol:'none',
+      {name:'Beats/m',type:'line',data:secs.map((s,i)=>[s,bpm[i]]),smooth:.3,symbol:'none',connectNulls:true,
        lineStyle:{color:'#2dd4bf',width:2},
        areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:'rgba(45,212,191,.3)'},{offset:1,color:'rgba(45,212,191,.02)'}]}}},
-      ...(mean!=null?[{name:'Avg',type:'line',data:mins.map(m=>[m,mean]),
+      ...(mean!=null?[{name:'Avg',type:'line',data:secs.map(s=>[s,mean]),
          lineStyle:{color:'#fbbf24',type:'dashed',width:1},symbol:'none',tooltip:{show:false}}]:[]),
     ]
   });
+}
 
+// ── chart: elevation profile + GAP ───────────────────────────────────────────
+function renderAltGAP(ts){
+  const el=document.getElementById('chart-elev'); if(!el)return;
+  if(_charts.elev)_charts.elev.dispose();
+  const ch=echarts.init(el,'dark',{backgroundColor:'transparent'}); _charts.elev=ch;
+  if(!ts||!ts.length||!ts.some(r=>r.altitude_m!=null)){
+    ch.setOption({title:{text:'No GPS elevation data',textStyle:{color:'#64748b'},left:'center',top:'center'}});
+    return;
+  }
+  const secs=ts.map(r=>r.elapsed_sec!=null?Math.round(+r.elapsed_sec):null);
+  const maxSec=Math.max(...secs.filter(v=>v!=null),1);
+  const alt=ts.map(r=>r.altitude_m!=null?+r.altitude_m.toFixed(1):null);
+  const spd=ts.map(r=>r.speed_kmh!=null&&r.speed_kmh>0.5?+r.speed_kmh.toFixed(2):null);
+  const gap=ts.map(r=>r.gap_speed_kmh!=null&&r.gap_speed_kmh>0.5?+r.gap_speed_kmh.toFixed(2):null);
+  const gr=ts.map(r=>r.grade_pct!=null?+r.grade_pct.toFixed(1):null);
+  const hasGAP=gap.some(v=>v!=null);
+  const altVals=alt.filter(v=>v!=null);
+  const altMin=altVals.length?Math.min(...altVals):0, altMax=altVals.length?Math.max(...altVals):100;
+  const altPad=Math.max(5,(altMax-altMin)*.15);
+  ch.setOption({
+    tooltip:{trigger:'axis',axisPointer:{type:'line'},
+      formatter:params=>{
+        const t=fmtElapsed(params[0]&&params[0].axisValue);
+        const i=params[0]?params[0].dataIndex:0;
+        const byName={};params.forEach(p=>{byName[p.seriesName]=p.value&&p.value[1];});
+        let s=`<b>${t}</b>`;
+        if(byName['Altitude']!=null)s+=`<br/>\u26f0 Altitude: <b>${byName['Altitude'].toFixed(0)} m</b>`;
+        const g=gr[i]; if(g!=null)s+=` <span style="color:${g>2?'#f87171':g<-2?'#34d399':'#94a3b8'}">(${g>0?'+':''}${g.toFixed(1)}%)</span>`;
+        if(byName['Speed']!=null)s+=`<br/>Speed: <b>${byName['Speed'].toFixed(1)} km/h</b> \u2014 ${speedToPace(byName['Speed'])}`;
+        if(hasGAP&&byName['GAP']!=null)s+=`<br/>GAP: <b>${byName['GAP'].toFixed(1)} km/h</b> \u2014 <b>${speedToPace(byName['GAP'])}</b>`;
+        return s;
+      }
+    },
+    grid:{left:55,right:55,top:20,bottom:45},
+    legend:{data:['Altitude','Speed',...(hasGAP?['GAP']:[])],textStyle:{color:'#94a3b8'},bottom:0},
+    xAxis:{type:'value',min:0,max:maxSec,minInterval:300,
+      axisLabel:{color:'#64748b',fontSize:10,formatter:v=>fmtElapsed(v)},splitLine:{show:false}},
+    yAxis:[
+      {type:'value',name:'m',nameTextStyle:{color:'#94a3b8',fontSize:10},
+       axisLabel:{color:'#94a3b8',fontSize:10},splitLine:{lineStyle:{color:'#1e2d45'}},
+       min:Math.floor(altMin-altPad),max:Math.ceil(altMax+altPad)},
+      {type:'value',name:'km/h',nameTextStyle:{color:'#60a5fa',fontSize:10},
+       axisLabel:{color:'#60a5fa',fontSize:10},splitLine:{show:false},
+       min:v=>Math.floor(v.min*.85),max:v=>Math.ceil(v.max*1.1)},
+    ],
+    series:[
+      {name:'Altitude',type:'line',data:secs.map((s,i)=>[s,alt[i]]),smooth:.4,symbol:'none',connectNulls:true,yAxisIndex:0,
+       lineStyle:{color:'#64748b',width:1},
+       areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:'rgba(100,116,139,.45)'},{offset:1,color:'rgba(100,116,139,.04)'}]}}},
+      {name:'Speed',type:'line',data:secs.map((s,i)=>[s,spd[i]]),smooth:.3,symbol:'none',connectNulls:true,yAxisIndex:1,
+       lineStyle:{color:'rgba(96,165,250,.55)',width:1.5}},
+      ...(hasGAP?[{name:'GAP',type:'line',data:secs.map((s,i)=>[s,gap[i]]),smooth:.3,symbol:'none',connectNulls:true,yAxisIndex:1,
+       lineStyle:{color:'#34d399',width:2.5}}]:[]),
+    ]
+  });
+}
+
+// ── GPS map (Leaflet + CartoDB dark tiles) ────────────────────────────────────
+function renderMap(gpsTrack, ts){
+  const el=document.getElementById('run-map'); if(!el)return;
+  if(_leafletMap){_leafletMap.remove();_leafletMap=null;}
+  if(!gpsTrack||!gpsTrack.length){
+    el.innerHTML='<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#64748b;font-size:13px">No GPS data for this run</div>';
+    return;
+  }
+  el.innerHTML='';
+  _leafletMap=L.map(el,{zoomControl:true,attributionControl:false});
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    {maxZoom:19,subdomains:'abcd'}).addTo(_leafletMap);
+  const latlngs=gpsTrack.map(p=>[p[0],p[1]]);
+  L.polyline(latlngs,{color:'#3b82f6',weight:3.5,opacity:.85}).addTo(_leafletMap);
+  if(latlngs.length>=2){
+    L.circleMarker(latlngs[0],{radius:7,fillColor:'#34d399',color:'#fff',weight:2,fillOpacity:1}).bindTooltip('Start',{permanent:false}).addTo(_leafletMap);
+    L.circleMarker(latlngs[latlngs.length-1],{radius:7,fillColor:'#f87171',color:'#fff',weight:2,fillOpacity:1}).bindTooltip('Finish',{permanent:false}).addTo(_leafletMap);
+  }
+  // Km markers: find lat/lng in timeseries at each km crossing
+  if(_showKmMarkers&&ts&&ts.length){
+    _computeKmMarks(ts).forEach(m=>{
+      let best=null,bestD=Infinity;
+      ts.forEach(r=>{if(r.elapsed_sec==null||r.latitude==null)return;const d=Math.abs(r.elapsed_sec-m.sec);if(d<bestD){bestD=d;best=r;}});
+      if(best&&best.latitude!=null){
+        L.marker([best.latitude,best.longitude],{icon:L.divIcon({
+          className:'',
+          html:`<div style="background:#1e2d45;color:#94a3b8;font-size:9px;font-weight:700;border:1px solid #334155;border-radius:3px;padding:2px 5px;white-space:nowrap">${m.km}km</div>`,
+          iconAnchor:[14,8]
+        })}).addTo(_leafletMap);
+      }
+    });
+  }
+  _leafletMap.fitBounds(L.latLngBounds(latlngs).pad(0.08));
+  setTimeout(()=>_leafletMap&&_leafletMap.invalidateSize(),120);
 }
 </script>
 </body>

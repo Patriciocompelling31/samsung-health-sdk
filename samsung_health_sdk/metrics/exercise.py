@@ -318,3 +318,29 @@ class ExerciseMetric(BaseMetric):
             df["beats_per_m"] = df["heart_rate"] / (60.0 * safe_speed)
 
         return df.sort_values("start_time").reset_index(drop=True)
+
+    def load_run_locationdata(self, datauuid: str) -> pd.DataFrame:
+        """
+        Load GPS location data for a single running session.
+
+        Returns a DataFrame with columns:
+            start_time  — UTC timestamp (from epoch ms)
+            latitude    — decimal degrees
+            longitude   — decimal degrees
+            altitude    — metres above sea level
+            accuracy    — GPS accuracy in metres (if available)
+
+        Parameters
+        ----------
+        datauuid : str
+            The ``datauuid`` value from a row returned by ``load_runs()``.
+        """
+        json_filename = f"{datauuid}.com.samsung.health.exercise.location_data.json"
+        json_path = resolve_binning_path(self._data_dir, self.metric_name, json_filename)
+        df = load_binning_json(json_path)
+        if df.empty:
+            return df
+        for col in ("latitude", "longitude", "altitude", "accuracy"):
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+        return df.sort_values("start_time").reset_index(drop=True)
